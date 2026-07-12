@@ -496,6 +496,31 @@ void CrewPhysiologyModel::updateCrewMember(
     updateHealthStatusAndAlarms(crew, pre_step_telemetry, config.vital_response);
 }
 
+// sum habitat O2/CO2/heat; active EVA suit phases draw from suit, not cabin
+CrewHabitatLoads CrewPhysiologyModel::aggregateCrewLoads(
+    const vector<CrewMemberState>& crew) const {
+    CrewHabitatLoads loads{};
+    loads.oxygen_consumption_g_min = 0.0;
+    loads.co2_production_g_min = 0.0;
+    loads.heat_output_w = 0.0;
+
+    for (const auto& member : crew) {
+        const bool suit_isolated =
+            member.eva_status == EVAStatus::Preparing ||
+            member.eva_status == EVAStatus::Egress ||
+            member.eva_status == EVAStatus::Working ||
+            member.eva_status == EVAStatus::Ingress;
+        if (suit_isolated) {
+            continue;
+        }
+        loads.oxygen_consumption_g_min += member.oxygen_consumption_g_min;
+        loads.co2_production_g_min += member.co2_production_g_min;
+        loads.heat_output_w += member.heat_output_w;
+    }
+
+    return loads;
+}
+
 // one deterministic physiology step for the full roster
 void CrewPhysiologyModel::updateAllCrew(
     SimulationState& state, const ScenarioConfig& config,

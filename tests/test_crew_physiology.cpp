@@ -3,8 +3,11 @@
 #include <stdexcept>
 #include "CrewPhysiologyModel.hpp"
 #include "Enums.hpp"
+#include "PhysicalConstants.hpp"
+#include "ResourceModel.hpp"
 #include "ScenarioConfig.hpp"
 #include "SimulationState.hpp"
+#include "TelemetrySample.hpp"
 
 using Catch::Approx;
 
@@ -1190,6 +1193,8 @@ TEST_CASE("crew: nominal when all vitals are inside thresholds", "[crew]") {
 
 namespace {
 
+vector<ParameterSource> buildPhysiologyParameterSources();
+
 ScenarioConfig makeFullPhysiologyConfig() {
     ScenarioConfig config = makeSeverityConfig();
 
@@ -1266,7 +1271,111 @@ ScenarioConfig makeFullPhysiologyConfig() {
     config.vital_response.fatigue_warning_fraction = 0.6;
     config.vital_response.performance_abort_fraction = 0.3;
 
+    config.parameter_sources = buildPhysiologyParameterSources();
     return config;
+}
+
+vector<ParameterSource> buildPhysiologyParameterSources() {
+    vector<ParameterSource> sources;
+
+    auto add = [&](const string& name, SourceClassification classification,
+                   const string& label, const string& note) {
+        ParameterSource source{};
+        source.parameter_name = name;
+        source.classification = classification;
+        source.source_label = label;
+        source.note = note;
+        sources.push_back(source);
+    };
+
+    // NASA standards used by environmental severity
+    add("inspired_o2_warning_mmhg", SourceClassification::NASAStandard,
+        "NASA inspired-O2 warning limit", "hypoxia severity safe threshold");
+    add("inspired_o2_failure_mmhg", SourceClassification::NASAStandard,
+        "NASA inspired-O2 failure limit", "hypoxia severity critical threshold");
+    add("co2_one_hour_limit_mmhg", SourceClassification::NASAStandard,
+        "NASA CO2 one-hour limit", "CO2 severity critical threshold");
+    add("pressure_warning_low_kpa", SourceClassification::NASAStandard,
+        "NASA cabin pressure warning", "pressure severity safe threshold");
+    add("pressure_failure_low_kpa", SourceClassification::NASAStandard,
+        "NASA cabin pressure failure", "pressure severity critical threshold");
+
+    // NASA-reference metabolic baselines
+    add("activity_metabolic_profiles", SourceClassification::NASAReference,
+        "NASA metabolic design reference",
+        "Sleep/Nominal/HighWorkload/EVA O2 CO2 heat rates");
+
+    // ARES vital-response assumptions
+    add("hypoxia_accumulation_rate", SourceClassification::ARESAssumption,
+        "ARES exposure model", "hypoxia exposure accumulation");
+    add("co2_accumulation_rate", SourceClassification::ARESAssumption,
+        "ARES exposure model", "CO2 exposure accumulation");
+    add("thermal_accumulation_rate", SourceClassification::ARESAssumption,
+        "ARES exposure model", "thermal exposure accumulation");
+    add("hypoxia_recovery_rate", SourceClassification::ARESAssumption,
+        "ARES exposure model", "hypoxia exposure recovery");
+    add("co2_recovery_rate", SourceClassification::ARESAssumption,
+        "ARES exposure model", "CO2 exposure recovery");
+    add("thermal_recovery_rate", SourceClassification::ARESAssumption,
+        "ARES exposure model", "thermal exposure recovery");
+    add("fatigue_work_rate", SourceClassification::ARESAssumption,
+        "ARES fatigue model", "workload fatigue accumulation");
+    add("fatigue_eva_rate", SourceClassification::ARESAssumption,
+        "ARES fatigue model", "EVA fatigue accumulation");
+    add("fatigue_recovery_rate", SourceClassification::ARESAssumption,
+        "ARES fatigue model", "rest fatigue recovery");
+    add("hr_activity_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "heart-rate activity gain");
+    add("hr_hypoxia_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "heart-rate hypoxia gain");
+    add("hr_co2_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "heart-rate CO2 gain");
+    add("hr_thermal_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "heart-rate thermal gain");
+    add("hr_fatigue_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "heart-rate fatigue gain");
+    add("rr_activity_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "respiratory-rate activity gain");
+    add("rr_hypoxia_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "respiratory-rate hypoxia gain");
+    add("rr_co2_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "respiratory-rate CO2 gain");
+    add("rr_thermal_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "respiratory-rate thermal gain");
+    add("spo2_hypoxia_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "SpO2 hypoxia gain");
+    add("spo2_pressure_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "SpO2 pressure gain");
+    add("spo2_activity_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "SpO2 activity gain");
+    add("spo2_exposure_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "SpO2 cumulative-exposure gain");
+    add("core_temp_environment_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "core-temp cabin coupling");
+    add("core_temp_activity_gain", SourceClassification::ARESAssumption,
+        "ARES vital response", "core-temp activity heat");
+    add("core_temp_time_constant_min", SourceClassification::ARESAssumption,
+        "ARES vital response", "core-temp / SpO2 lag");
+    add("cognitive_hypoxia_weight", SourceClassification::ARESAssumption,
+        "ARES performance model", "cognitive hypoxia weight");
+    add("cognitive_co2_weight", SourceClassification::ARESAssumption,
+        "ARES performance model", "cognitive CO2 weight");
+    add("cognitive_thermal_weight", SourceClassification::ARESAssumption,
+        "ARES performance model", "cognitive thermal weight");
+    add("cognitive_fatigue_weight", SourceClassification::ARESAssumption,
+        "ARES performance model", "cognitive fatigue weight");
+    add("physical_hypoxia_weight", SourceClassification::ARESAssumption,
+        "ARES performance model", "physical hypoxia weight");
+    add("physical_co2_weight", SourceClassification::ARESAssumption,
+        "ARES performance model", "physical CO2 weight");
+    add("physical_thermal_weight", SourceClassification::ARESAssumption,
+        "ARES performance model", "physical thermal weight");
+    add("physical_fatigue_weight", SourceClassification::ARESAssumption,
+        "ARES performance model", "physical fatigue weight");
+    add("oxygen_rationing_factor", SourceClassification::ARESAssumption,
+        "ARES rationing policy", "hardcoded 0.75 metabolic scale under rationing");
+
+    return sources;
 }
 
 CrewMemberConfig makePhysiologyMember() {
@@ -1434,4 +1543,251 @@ TEST_CASE("crew: updateAllCrew rejects roster/state mismatch", "[crew]") {
     DerivedTelemetry telemetry{};
     REQUIRE_THROWS_AS(
         model.updateAllCrew(state, config, telemetry, 60.0), std::runtime_error);
+}
+
+TEST_CASE("crew: aggregateCrewLoads sums habitat crew and excludes active EVA", "[crew]") {
+    CrewPhysiologyModel model;
+
+    CrewMemberState habitat{};
+    habitat.crew_id = "hab";
+    habitat.eva_status = EVAStatus::Idle;
+    habitat.oxygen_consumption_g_min = 0.50;
+    habitat.co2_production_g_min = 0.60;
+    habitat.heat_output_w = 100.0;
+
+    CrewMemberState eva{};
+    eva.crew_id = "eva";
+    eva.eva_status = EVAStatus::Working;
+    eva.oxygen_consumption_g_min = 1.80;
+    eva.co2_production_g_min = 2.00;
+    eva.heat_output_w = 300.0;
+
+    CrewMemberState complete{};
+    complete.crew_id = "done";
+    complete.eva_status = EVAStatus::Complete;
+    complete.oxygen_consumption_g_min = 0.50;
+    complete.co2_production_g_min = 0.60;
+    complete.heat_output_w = 100.0;
+
+    CrewHabitatLoads loads =
+        model.aggregateCrewLoads({habitat, eva, complete});
+
+    REQUIRE(loads.oxygen_consumption_g_min == Approx(1.0));
+    REQUIRE(loads.co2_production_g_min == Approx(1.2));
+    REQUIRE(loads.heat_output_w == Approx(200.0));
+}
+
+TEST_CASE("crew: high-CO2 updateCrewMember moves fields in expected directions", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeFullPhysiologyConfig();
+    CrewMemberConfig member = makePhysiologyMember();
+    CrewMemberState safe = makeBaselineCrewState(member);
+    CrewMemberState high_co2 = makeBaselineCrewState(member);
+
+    DerivedTelemetry safe_telemetry{};
+    safe_telemetry.atmosphere.inspired_oxygen_mmhg = 150.0;
+    safe_telemetry.atmosphere.cabin_pressure_kpa = 80.0;
+    safe_telemetry.atmosphere.co2_one_hour_avg_mmhg = 0.0;
+    safe_telemetry.eva.eva_safe_return_margin_min = 200.0;
+
+    DerivedTelemetry co2_telemetry = safe_telemetry;
+    co2_telemetry.atmosphere.co2_one_hour_avg_mmhg = 8.0;
+
+    model.updateCrewMember(safe, member, safe_telemetry, config, 60.0, 22.0);
+    model.updateCrewMember(high_co2, member, co2_telemetry, config, 60.0, 22.0);
+
+    REQUIRE(high_co2.co2_exposure_index > safe.co2_exposure_index);
+    REQUIRE(high_co2.heart_rate_bpm > safe.heart_rate_bpm);
+    REQUIRE(high_co2.respiratory_rate_bpm > safe.respiratory_rate_bpm);
+    REQUIRE(high_co2.cognitive_performance_factor < safe.cognitive_performance_factor);
+    REQUIRE(high_co2.physical_performance_factor < safe.physical_performance_factor);
+    REQUIRE(high_co2.health_status != CrewHealthStatus::Nominal);
+}
+
+TEST_CASE("crew: thermal-stress updateCrewMember moves fields in expected directions", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeFullPhysiologyConfig();
+    config.vital_response.core_temp_environment_gain = 0.5;
+    config.vital_response.core_temp_time_constant_min = 0.0;
+
+    CrewMemberConfig member = makePhysiologyMember();
+    CrewMemberState safe = makeBaselineCrewState(member);
+    CrewMemberState hot = makeBaselineCrewState(member);
+
+    DerivedTelemetry telemetry{};
+    telemetry.atmosphere.inspired_oxygen_mmhg = 150.0;
+    telemetry.atmosphere.cabin_pressure_kpa = 80.0;
+    telemetry.atmosphere.co2_one_hour_avg_mmhg = 0.0;
+    telemetry.eva.eva_safe_return_margin_min = 200.0;
+
+    model.updateCrewMember(safe, member, telemetry, config, 60.0, 22.0);
+    model.updateCrewMember(hot, member, telemetry, config, 60.0, 40.0);
+
+    REQUIRE(hot.thermal_exposure_index > safe.thermal_exposure_index);
+    REQUIRE(hot.heart_rate_bpm > safe.heart_rate_bpm);
+    REQUIRE(hot.respiratory_rate_bpm > safe.respiratory_rate_bpm);
+    REQUIRE(hot.core_temperature_c > safe.core_temperature_c);
+    REQUIRE(hot.cognitive_performance_factor < safe.cognitive_performance_factor);
+    REQUIRE(hot.physical_performance_factor < safe.physical_performance_factor);
+    REQUIRE(hasAlarm(hot, CrewAlarmType::Thermal));
+    REQUIRE(hot.health_status != CrewHealthStatus::Nominal);
+}
+
+TEST_CASE("crew: habitat connection records one atomic TelemetrySample", "[crew]") {
+    CrewPhysiologyModel physiology;
+    ResourceModel resources;
+
+    ScenarioConfig config = makeFullPhysiologyConfig();
+    config.time_step_s = 60;
+    config.habitat.effective_thermal_capacitance_kj_c = 500.0;
+    config.atmosphere.scrubber_capacity_g_min = 0.0;
+    config.solar.array_area_m2 = 100.0;
+    config.solar.cell_efficiency = 0.30;
+    config.solar.mars_sun_distance_au = 1.5;
+    config.power.battery_capacity_kwh = 100.0;
+    config.power.battery_reserve_percent = 20.0;
+    config.power.charge_efficiency = 0.90;
+    config.power.discharge_efficiency = 0.90;
+    config.eva.maximum_duration_min = 360;
+    config.eva.ingress_min = 30;
+    config.eva.reserve_min = 30;
+    config.communications.transmission_duration_min = 10;
+
+    CrewMemberConfig member = makePhysiologyMember();
+    member.crew_id = "crew_01";
+    config.crew_roster = {member};
+
+    SimulationState state{};
+    state.time_min = 0;
+    state.habitable_volume_m3 = 100.0;
+    state.cabin_temperature_c = 22.0;
+    state.oxygen_mass_kg = 20.0;
+    state.inert_gas_mass_kg = 40.0;
+    state.co2_mass_kg = 0.5;
+    state.total_gas_leak_kg_hr = 0.0;
+    state.leak_fault_factor = 1.0;
+    state.scrubber_efficiency = 1.0;
+    state.battery_energy_kwh = 50.0;
+    state.solar_incidence_angle_deg = 0.0;
+    state.atmospheric_transmission = 1.0;
+    state.deposited_dust_factor = 1.0;
+    state.solar_fault_factor = 1.0;
+    state.essential_load_kw = 1.0;
+    state.equipment_heat_w = 0.0;
+    state.environmental_heat_w = 0.0;
+    state.heater_heat_w = 0.0;
+    state.tcs_rejection_capacity_w = 1000.0;
+    state.crew = {makeBaselineCrewState(member)};
+    state.crew[0].crew_id = "crew_01";
+
+    const double dt_seconds = 60.0;
+    MissionTelemetry mission{};
+    mission.mission_status = MissionStatus::Nominal;
+
+    // 1. pre-step habitat telemetry from current physical state
+    DerivedTelemetry pre_step =
+        resources.calculateDerivedTelemetry(state, config, {}, mission);
+
+    // 2. physiology update once from pre-step environment
+    physiology.updateAllCrew(state, config, pre_step, dt_seconds);
+
+    // 3. aggregate habitat-fed metabolic loads
+    CrewHabitatLoads loads = physiology.aggregateCrewLoads(state.crew);
+
+    const double o2_before = state.oxygen_mass_kg;
+    const double co2_before = state.co2_mass_kg;
+
+    // 4. pass totals into ResourceModel atmosphere / CO2 / thermal
+    resources.updateAtmosphere(
+        state, config, loads.oxygen_consumption_g_min, dt_seconds);
+    resources.updateCarbonDioxide(
+        state, config, loads.co2_production_g_min, dt_seconds);
+    resources.updateThermalState(
+        state, config, loads.heat_output_w, dt_seconds);
+
+    // 5–6. post-step crew then habitat telemetry
+    vector<CrewVitalsTelemetry> crew_vitals =
+        physiology.buildCrewVitalsTelemetry(state, config);
+    DerivedTelemetry post_step =
+        resources.calculateDerivedTelemetry(state, config, crew_vitals, mission);
+
+    // 7. one atomic TelemetrySample
+    TelemetrySample sample{};
+    sample.simulation_time_min = state.time_min;
+    sample.telemetry = post_step;
+    sample.events_this_step = {};
+    sample.active_actions = {};
+    sample.has_warning = false;
+    sample.has_critical = false;
+    for (const auto& vitals : sample.telemetry.crew_vitals) {
+        if (vitals.health_status == CrewHealthStatus::ElevatedStress ||
+            vitals.health_status == CrewHealthStatus::Impaired) {
+            sample.has_warning = true;
+        }
+        if (vitals.health_status == CrewHealthStatus::Critical ||
+            vitals.health_status == CrewHealthStatus::Incapacitated) {
+            sample.has_critical = true;
+        }
+    }
+
+    const double dt_minutes = dt_seconds / ares::constants::SECONDS_PER_MINUTE;
+    const double expected_o2_kg =
+        loads.oxygen_consumption_g_min * dt_minutes /
+        ares::constants::GRAMS_PER_KILOGRAM;
+    const double expected_co2_kg =
+        loads.co2_production_g_min * dt_minutes /
+        ares::constants::GRAMS_PER_KILOGRAM;
+
+    REQUIRE(state.oxygen_mass_kg == Approx(o2_before - expected_o2_kg));
+    REQUIRE(state.co2_mass_kg == Approx(co2_before + expected_co2_kg));
+    REQUIRE(sample.telemetry.thermal.crew_heat_w == Approx(loads.heat_output_w));
+    REQUIRE(sample.telemetry.crew_vitals.size() == 1);
+    REQUIRE(sample.telemetry.crew_vitals[0].crew_id == "crew_01");
+    REQUIRE(sample.simulation_time_min == 0);
+    REQUIRE(sample.telemetry.crew_vitals[0].oxygen_consumption_g_min ==
+            Approx(loads.oxygen_consumption_g_min));
+}
+
+TEST_CASE("crew: physiology parameter_sources cover vital-response coefficients", "[crew]") {
+    ScenarioConfig config = makeFullPhysiologyConfig();
+    REQUIRE_FALSE(config.parameter_sources.empty());
+
+    auto find_source = [&](const string& name) -> const ParameterSource* {
+        for (const auto& source : config.parameter_sources) {
+            if (source.parameter_name == name) {
+                return &source;
+            }
+        }
+        return nullptr;
+    };
+
+    const ParameterSource* inspired =
+        find_source("inspired_o2_warning_mmhg");
+    REQUIRE(inspired != nullptr);
+    REQUIRE(inspired->classification == SourceClassification::NASAStandard);
+
+    const ParameterSource* metabolic =
+        find_source("activity_metabolic_profiles");
+    REQUIRE(metabolic != nullptr);
+    REQUIRE(metabolic->classification == SourceClassification::NASAReference);
+
+    const ParameterSource* hr_gain = find_source("hr_hypoxia_gain");
+    REQUIRE(hr_gain != nullptr);
+    REQUIRE(hr_gain->classification == SourceClassification::ARESAssumption);
+
+    const ParameterSource* rationing = find_source("oxygen_rationing_factor");
+    REQUIRE(rationing != nullptr);
+    REQUIRE(rationing->classification == SourceClassification::ARESAssumption);
+
+    const ParameterSource* co2_limit = find_source("co2_one_hour_limit_mmhg");
+    REQUIRE(co2_limit != nullptr);
+    REQUIRE(co2_limit->classification == SourceClassification::NASAStandard);
+
+    int ares_count = 0;
+    for (const auto& source : config.parameter_sources) {
+        if (source.classification == SourceClassification::ARESAssumption) {
+            ++ares_count;
+        }
+    }
+    REQUIRE(ares_count >= 20);
 }

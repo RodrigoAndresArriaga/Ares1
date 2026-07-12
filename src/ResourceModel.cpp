@@ -323,6 +323,126 @@ ThermalTelemetry ResourceModel::calculateThermalTelemetry(const SimulationState&
     return out;
 }
 
+void ResourceModel::updateEVAAndRepair(SimulationState& state, const ScenarioConfig& config, vector<TimelineEvent>& events, double dt_seconds){
+    // advance active EVA phase, consumables, rover energy, and repair progress
+    double dt_minutes = dt_seconds / ares::constants::SECONDS_PER_MINUTE;
+    if(dt_minutes <= 0.0){
+        return;
+    }
+
+    CrewMemberState* active_crew = nullptr;
+    for(auto& crew : state.crew){
+        if(crew.eva_status == EVAStatus::Preparing ||
+           crew.eva_status == EVAStatus::Egress ||
+           crew.eva_status == EVAStatus::Working ||
+           crew.eva_status == EVAStatus::Ingress){
+            active_crew = &crew;
+            break;
+        }
+    }
+    if(active_crew == nullptr){
+        return;
+    }
+
+    auto emit = [&](const string& event_type, const string& message, ConstraintSeverity severity){
+        TimelineEvent ev{};
+        ev.time_min = state.time_min;
+        ev.event_type = event_type;
+        ev.message = message;
+        ev.severity = severity;
+        events.push_back(ev);
+    };
+
+    auto begin_ingress = [&](CrewMemberState& crew, const string& reason){
+        crew.eva_status = EVAStatus::Ingress;
+        crew.actvity = CrewActivity::EVATransit;
+        state.eva_work_elapsed_min = 0;
+        emit("eva_ingress", reason, ConstraintSeverity::Warning);
+    };
+
+    auto abort_eva = [&](CrewMemberState& crew, const string& reason){
+        crew.eva_status = EVAStatus::Aborted;
+        crew.actvity = CrewActivity::Recovery;
+        emit("eva_aborted", reason, ConstraintSeverity::Critical);
+    };
+
+    // rover energy while EVA is active
+    if(config.eva.rover_required){
+        if(!state.rover_available){
+            abort_eva(*active_crew, "rover unavailable during EVA");
+            return;
+        }
+        state.rover_battery_percent -= dt_minutes * (100.0 / static_cast<double>(config.eva.maximum_duration_min));
+        if(state.rover_battery_percent < 0.0){
+            state.rover_battery_percent = 0.0;
+        }
+        if(state.rover_battery_percent < config.eva.rover_minimum_reserve_percent){
+            begin_ingress(*active_crew, "rover below minimum reserve; aborting to ingress");
+        }
+    }
+
+    if(active_crew->eva_status == EVAStatus::Aborted){
+        return;
+    }
+
+    state.eva_elapsed_min += static_cast<int>(dt_minutes);
+
+    EVATelemetry preview = calculateEVATelemetry(state, config);
+    if(preview.eva_safe_return_margin_min < 0.0 &&
+       (active_crew->eva_status == EVAStatus::Preparing ||
+        active_crew->eva_status == EVAStatus::Egress ||
+        active_crew->eva_status == EVAStatus::Working)){
+        begin_ingress(*active_crew, "EVA safe-return margin negative; aborting to ingress");
+    }
+
+    if(active_crew->eva_status == EVAStatus::Preparing){
+        active_crew->actvity = CrewActivity::EVAPrep;
+        if(state.eva_elapsed_min >= config.eva.preparation_min){
+            active_crew->eva_status = EVAStatus::Egress;
+            active_crew->actvity = CrewActivity::EVATransit;
+            emit("eva_egress", "EVA preparation complete; beginning egress", ConstraintSeverity::Info);
+        }
+    }else if(active_crew->eva_status == EVAStatus::Egress){
+        active_crew->actvity = CrewActivity::EVATransit;
+        int egress_done_at = config.eva.preparation_min + config.eva.egress_min;
+        if(state.eva_elapsed_min >= egress_done_at){
+            active_crew->eva_status = EVAStatus::Working;
+            active_crew->actvity = CrewActivity::EVAWork;
+            state.eva_work_elapsed_min = 0;
+            emit("eva_working", "EVA egress complete; beginning repair work", ConstraintSeverity::Info);
+        }
+    }else if(active_crew->eva_status == EVAStatus::Working){
+        active_crew->actvity = CrewActivity::EVAWork;
+        state.eva_work_elapsed_min += static_cast<int>(dt_minutes);
+        double performance = active_crew->physical_performance_factor;
+        if(performance < 0.0){
+            performance = 0.0;
+        }
+        if(config.eva.repair_work_min > 0){
+            double delta = (dt_minutes / static_cast<double>(config.eva.repair_work_min)) * performance;
+            state.solar_repair_progress += delta;
+            if(state.solar_repair_progress > 1.0){
+                state.solar_repair_progress = 1.0;
+            }
+        }
+        if(state.solar_repair_progress >= 1.0){
+            begin_ingress(*active_crew, "solar repair complete; beginning ingress");
+        }
+    }else if(active_crew->eva_status == EVAStatus::Ingress){
+        active_crew->actvity = CrewActivity::EVATransit;
+        state.eva_work_elapsed_min += static_cast<int>(dt_minutes);
+        if(state.eva_work_elapsed_min >= config.eva.ingress_min){
+            active_crew->eva_status = EVAStatus::Complete;
+            active_crew->actvity = CrewActivity::Recovery;
+            if(state.solar_repair_progress >= 1.0){
+                state.solar_fault_factor = config.fault.repaired_solar_fault_factor;
+                emit("solar_repaired", "solar fault factor restored after successful repair", ConstraintSeverity::Info);
+            }
+            emit("eva_complete", "EVA ingress complete", ConstraintSeverity::Info);
+        }
+    }
+}
+
 EVATelemetry ResourceModel::calculateEVATelemetry(const SimulationState& state, const ScenarioConfig& config) const{
     // EVA consumables, safe-return margin, and repair progress.
     EVATelemetry out{};

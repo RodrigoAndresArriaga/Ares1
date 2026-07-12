@@ -86,3 +86,10 @@ struct CrewVitalsTelemetry{
     CrewHealthStatus health_status;
     vector<CrewAlarmType> active_alarms;
 };
+
+// summed habitat metabolic loads from habitat-fed crew
+struct CrewHabitatLoads {
+    double oxygen_consumption_g_min;
+    double co2_production_g_min;
+    double heat_output_w;
+};

@@ -49,6 +49,11 @@ struct SimulationState{
     double solar_repair_progress;
     double rover_battery_percent;
     bool rover_available;
+    int rover_reserved_until_min;
+
+    //Module isolation
+    bool module_isolated;
+    string isolated_module;
 
     //Communications
     bool emergency_packet_sent;
@@ -58,5 +63,5 @@ struct SimulationState{
     vector<string> active_faults;
     vector<CrewMemberState> crew;
     deque<double> rolling_co2_samples;
-    vector<Action> active_actions;
+    vector<ActiveActionState> active_actions;
 };

@@ -19,6 +19,9 @@ struct Action{
     std::optional<int> duration_min;
     std::optional<double> hours;
     std::optional<string> crew_id;
+    std::optional<string> eva_crew_id;
+    vector<string> assigned_crew_ids;
+    vector<string> target_crew_ids;
     vector<string> load_groups;
 };
 
@@ -30,5 +33,7 @@ struct ActiveActionState{
     int elapsed_min;
     double progress_fraction;
     std::optional<string> assigned_crew_id;
+    std::optional<string> eva_crew_id;
+    vector<string> assigned_crew_ids;
     string failure_reason;
 };

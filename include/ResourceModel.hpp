@@ -5,6 +5,7 @@
 #include "DerivedTelemetry.hpp"
 #include "ScenarioConfig.hpp"
 #include "SimulationState.hpp"
+#include "TelemetrySample.hpp"
 
 using namespace std;
 
@@ -18,6 +19,7 @@ public:
     double calculateHealthySolarGenerationKw(const SimulationState& state, const ScenarioConfig& config) const;
     void updateElectricalPower(SimulationState& state, const ScenarioConfig& config, double solar_generation_kw, double dt_seconds);
     void updateThermalState(SimulationState& state, const ScenarioConfig& config, double total_crew_heat_w, double dt_seconds);
+    void updateEVAAndRepair(SimulationState& state, const ScenarioConfig& config, vector<TimelineEvent>& events, double dt_seconds);
     AtmosphereTelemetry calculateAtmosphereTelemetry(const SimulationState& state, const ScenarioConfig& config) const;
     PowerTelemetry calculatePowerTelemetry(const SimulationState& state, const ScenarioConfig& config, double solar_generation_kw, double healthy_solar_generation_kw) const;
     ThermalTelemetry calculateThermalTelemetry(const SimulationState& state, const ScenarioConfig& config, double total_crew_heat_w) const;

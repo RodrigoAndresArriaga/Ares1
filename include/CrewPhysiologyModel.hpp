@@ -69,4 +69,7 @@ public:
     void updateAllCrew(
         SimulationState& state, const ScenarioConfig& config,
         const DerivedTelemetry& pre_step_telemetry, double dt_seconds);
+
+    // sum O2/CO2/heat for habitat-fed crew only (exclude active EVA suit)
+    CrewHabitatLoads aggregateCrewLoads(const vector<CrewMemberState>& crew) const;
 };

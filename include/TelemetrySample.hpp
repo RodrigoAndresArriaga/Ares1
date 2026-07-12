@@ -20,7 +20,7 @@ struct TelemetrySample{
     int simulation_time_min;
     DerivedTelemetry telemetry;
     vector<TimelineEvent> events_this_step;
-    vector<Action> active_actions;
+    vector<ActiveActionState> active_actions;
     bool has_warning;
     bool has_critical;
 };
