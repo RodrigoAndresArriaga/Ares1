@@ -11,6 +11,8 @@ add_executable(sim_core_tests
     ${CMAKE_SOURCE_DIR}/src/ResourceModel.cpp
     ${CMAKE_SOURCE_DIR}/src/CrewPhysiologyModel.cpp
     ${CMAKE_SOURCE_DIR}/src/ActionExecutor.cpp
+    ${CMAKE_SOURCE_DIR}/src/Validator.cpp
+    ${CMAKE_SOURCE_DIR}/src/Simulation.cpp
     ${CMAKE_SOURCE_DIR}/src/MathUtils.cpp
 )
 

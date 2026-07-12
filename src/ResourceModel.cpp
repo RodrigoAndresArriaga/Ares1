@@ -394,6 +394,12 @@ void ResourceModel::updateEVAAndRepair(SimulationState& state, const ScenarioCon
         active_crew->eva_status == EVAStatus::Working)){
         begin_ingress(*active_crew, "EVA safe-return margin negative; aborting to ingress");
     }
+    if(active_crew->health_status == CrewHealthStatus::Critical &&
+       (active_crew->eva_status == EVAStatus::Preparing ||
+        active_crew->eva_status == EVAStatus::Egress ||
+        active_crew->eva_status == EVAStatus::Working)){
+        begin_ingress(*active_crew, "critical EVA vitals; aborting to ingress");
+    }
 
     if(active_crew->eva_status == EVAStatus::Preparing){
         active_crew->actvity = CrewActivity::EVAPrep;

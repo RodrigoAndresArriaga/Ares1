@@ -123,6 +123,7 @@ struct FaultConfig{
     double isolation_leak_multiplier;
     double solar_fault_factor;
     double repaired_solar_fault_factor;
+    double stabilized_leak_kg_hr;
 };
 
 struct VitalResponseConfig{

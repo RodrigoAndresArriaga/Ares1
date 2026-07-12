@@ -343,7 +343,8 @@ void ActionExecutor::startRepairSolarArray(
         return;
     }
     if(crew->health_status == CrewHealthStatus::Incapacitated ||
-       crew->health_status == CrewHealthStatus::Critical){
+       crew->health_status == CrewHealthStatus::Critical ||
+       crew->health_status == CrewHealthStatus::Impaired){
         active.status = ActionExecutionStatus::Failed;
         active.failure_reason = "crew health prevents EVA: " + crew_id;
         state.active_actions.push_back(active);
