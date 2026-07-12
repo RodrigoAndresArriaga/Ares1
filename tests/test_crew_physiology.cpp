@@ -1,0 +1,1437 @@
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
+#include <stdexcept>
+#include "CrewPhysiologyModel.hpp"
+#include "Enums.hpp"
+#include "ScenarioConfig.hpp"
+#include "SimulationState.hpp"
+
+using Catch::Approx;
+
+namespace {
+
+CrewMemberConfig makeCrew(
+    const string& id,
+    const string& name,
+    const string& role,
+    double hr,
+    double rr,
+    double spo2,
+    double temp,
+    CrewActivity activity,
+    const string& location) {
+    CrewMemberConfig crew{};
+    crew.crew_id = id;
+    crew.display_name = name;
+    crew.assigned_role = role;
+    crew.body_mass_kg = 70.0;
+    crew.baseline_heart_rate_bpm = hr;
+    crew.baseline_respiratory_rate_bpm = rr;
+    crew.baseline_spo2_percent = spo2;
+    crew.baseline_core_temperature_c = temp;
+    crew.fitness_factor = 1.0;
+    crew.hypoxia_sensitivity = 1.0;
+    crew.co2_sensitivity = 1.0;
+    crew.thermal_sensitivity = 1.0;
+    crew.fatigue_recovery_factor = 1.0;
+    crew.eva_qualified = true;
+    crew.initial_activity = activity;
+    crew.initial_location_module = location;
+    crew.initial_eva_status = EVAStatus::Idle;
+    crew.initial_oxygen_rationing_active = false;
+    return crew;
+}
+
+ScenarioConfig makeCrewConfig() {
+    ScenarioConfig config{};
+
+    ActivityMetabolicProfile resting{};
+    resting.activity = CrewActivity::Resting;
+    resting.oxygen_g_min = 0.5;
+    resting.co2_g_min = 0.6;
+    resting.heat_w = 100.0;
+    resting.activity_load = 0.2;
+
+    ActivityMetabolicProfile work{};
+    work.activity = CrewActivity::NominalWork;
+    work.oxygen_g_min = 0.9;
+    work.co2_g_min = 1.0;
+    work.heat_w = 150.0;
+    work.activity_load = 0.5;
+
+    config.vital_response.activity_profiles = {resting, work};
+
+    config.crew_roster = {
+        makeCrew("crew_01", "Alex Rivera", "Commander", 62.0, 12.0, 98.0, 36.8,
+                 CrewActivity::Resting, "hab_core"),
+        makeCrew("crew_02", "Jordan Lee", "Engineer", 68.0, 14.0, 97.5, 36.9,
+                 CrewActivity::NominalWork, "lab_module"),
+    };
+
+    return config;
+}
+
+}
+
+TEST_CASE("crew: roster mapping preserves size and order", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeCrewConfig();
+
+    vector<CrewMemberState> states = model.initializeCrewStates(config);
+
+    REQUIRE(states.size() == 2);
+    REQUIRE(states[0].crew_id == "crew_01");
+    REQUIRE(states[1].crew_id == "crew_02");
+}
+
+TEST_CASE("crew: baseline initialization matches config and profiles", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeCrewConfig();
+
+    vector<CrewMemberState> states = model.initializeCrewStates(config);
+
+    REQUIRE(states[0].heart_rate_bpm == Approx(62.0));
+    REQUIRE(states[0].respiratory_rate_bpm == Approx(12.0));
+    REQUIRE(states[0].spo2_percent == Approx(98.0));
+    REQUIRE(states[0].core_temperature_c == Approx(36.8));
+    REQUIRE(states[0].actvity == CrewActivity::Resting);
+    REQUIRE(states[0].location_module == "hab_core");
+    REQUIRE(states[0].eva_status == EVAStatus::Idle);
+    REQUIRE_FALSE(states[0].oxygen_rationing_active);
+    REQUIRE(states[0].hypoxia_exposure_index == Approx(0.0));
+    REQUIRE(states[0].co2_exposure_index == Approx(0.0));
+    REQUIRE(states[0].thermal_exposure_index == Approx(0.0));
+    REQUIRE(states[0].fatigue_index == Approx(0.0));
+    REQUIRE(states[0].cognitive_performance_factor == Approx(1.0));
+    REQUIRE(states[0].physical_performance_factor == Approx(1.0));
+    REQUIRE(states[0].oxygen_consumption_g_min == Approx(0.5));
+    REQUIRE(states[0].co2_production_g_min == Approx(0.6));
+    REQUIRE(states[0].heat_output_w == Approx(100.0));
+    REQUIRE(states[0].health_status == CrewHealthStatus::Nominal);
+    REQUIRE(states[0].active_alarms.empty());
+
+    REQUIRE(states[1].heart_rate_bpm == Approx(68.0));
+    REQUIRE(states[1].actvity == CrewActivity::NominalWork);
+    REQUIRE(states[1].location_module == "lab_module");
+    REQUIRE(states[1].oxygen_consumption_g_min == Approx(0.9));
+    REQUIRE(states[1].co2_production_g_min == Approx(1.0));
+    REQUIRE(states[1].heat_output_w == Approx(150.0));
+}
+
+TEST_CASE("crew: repeated initialization is identical", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeCrewConfig();
+
+    vector<CrewMemberState> first = model.initializeCrewStates(config);
+    vector<CrewMemberState> second = model.initializeCrewStates(config);
+
+    REQUIRE(first.size() == second.size());
+    for (size_t i = 0; i < first.size(); ++i) {
+        REQUIRE(first[i].crew_id == second[i].crew_id);
+        REQUIRE(first[i].heart_rate_bpm == Approx(second[i].heart_rate_bpm));
+        REQUIRE(first[i].respiratory_rate_bpm == Approx(second[i].respiratory_rate_bpm));
+        REQUIRE(first[i].spo2_percent == Approx(second[i].spo2_percent));
+        REQUIRE(first[i].core_temperature_c == Approx(second[i].core_temperature_c));
+        REQUIRE(first[i].oxygen_consumption_g_min == Approx(second[i].oxygen_consumption_g_min));
+        REQUIRE(first[i].co2_production_g_min == Approx(second[i].co2_production_g_min));
+        REQUIRE(first[i].heat_output_w == Approx(second[i].heat_output_w));
+        REQUIRE(first[i].actvity == second[i].actvity);
+        REQUIRE(first[i].location_module == second[i].location_module);
+    }
+}
+
+TEST_CASE("crew: telemetry copy converts percentages and does not mutate state", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeCrewConfig();
+    SimulationState state{};
+    state.crew = model.initializeCrewStates(config);
+
+    state.crew[0].fatigue_index = 0.28;
+    state.crew[0].cognitive_performance_factor = 0.91;
+    state.crew[0].physical_performance_factor = 0.85;
+    state.crew[0].hypoxia_exposure_index = 0.12;
+    state.crew[0].co2_exposure_index = 0.05;
+    state.crew[0].thermal_exposure_index = 0.08;
+
+    vector<CrewMemberState> before = state.crew;
+    vector<CrewVitalsTelemetry> vitals = model.buildCrewVitalsTelemetry(state, config);
+
+    REQUIRE(vitals.size() == 2);
+    REQUIRE(vitals[0].crew_id == "crew_01");
+    REQUIRE(vitals[0].display_name == "Alex Rivera");
+    REQUIRE(vitals[0].assigned_role == "Commander");
+    REQUIRE(vitals[0].location_module == "hab_core");
+    REQUIRE(vitals[0].activity == CrewActivity::Resting);
+    REQUIRE(vitals[0].heart_rate_bpm == Approx(62.0));
+    REQUIRE(vitals[0].oxygen_consumption_g_min == Approx(0.5));
+    REQUIRE(vitals[0].fatigue_percent == Approx(28.0));
+    REQUIRE(vitals[0].cognitive_performance_percent == Approx(91.0));
+    REQUIRE(vitals[0].physical_performance_percent == Approx(85.0));
+    REQUIRE(vitals[0].hypoxia_exposure == Approx(0.12));
+    REQUIRE(vitals[0].co2_exposure == Approx(0.05));
+    REQUIRE(vitals[0].thermal_exposure == Approx(0.08));
+    REQUIRE(vitals[0].health_status == CrewHealthStatus::Nominal);
+
+    REQUIRE(vitals[1].crew_id == "crew_02");
+    REQUIRE(vitals[1].display_name == "Jordan Lee");
+    REQUIRE(vitals[1].assigned_role == "Engineer");
+
+    REQUIRE(state.crew[0].fatigue_index == Approx(before[0].fatigue_index));
+    REQUIRE(state.crew[0].cognitive_performance_factor == Approx(before[0].cognitive_performance_factor));
+    REQUIRE(state.crew[0].physical_performance_factor == Approx(before[0].physical_performance_factor));
+    REQUIRE(state.crew[0].hypoxia_exposure_index == Approx(before[0].hypoxia_exposure_index));
+}
+
+TEST_CASE("crew: findCrewConfig resolves known ids and rejects unknown", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeCrewConfig();
+
+    const CrewMemberConfig& found = model.findCrewConfig("crew_02", config);
+    REQUIRE(found.crew_id == "crew_02");
+    REQUIRE(found.display_name == "Jordan Lee");
+
+    REQUIRE_THROWS_AS(model.findCrewConfig("crew_missing", config), std::runtime_error);
+}
+
+TEST_CASE("crew: findActivityProfile resolves NASA-baseline and EVA profiles", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig vital_response{};
+
+    ActivityMetabolicProfile sleep{};
+    sleep.activity = CrewActivity::Sleep;
+    sleep.oxygen_g_min = 0.35;
+    sleep.co2_g_min = 0.40;
+    sleep.heat_w = 75.0;
+    sleep.activity_load = 0.1;
+
+    ActivityMetabolicProfile nominal{};
+    nominal.activity = CrewActivity::NominalWork;
+    nominal.oxygen_g_min = 0.90;
+    nominal.co2_g_min = 1.00;
+    nominal.heat_w = 150.0;
+    nominal.activity_load = 0.5;
+
+    ActivityMetabolicProfile high{};
+    high.activity = CrewActivity::HighWorkload;
+    high.oxygen_g_min = 1.40;
+    high.co2_g_min = 1.55;
+    high.heat_w = 220.0;
+    high.activity_load = 0.8;
+
+    ActivityMetabolicProfile eva{};
+    eva.activity = CrewActivity::EVAWork;
+    eva.oxygen_g_min = 1.80;
+    eva.co2_g_min = 2.00;
+    eva.heat_w = 300.0;
+    eva.activity_load = 1.0;
+
+    vital_response.activity_profiles = {sleep, nominal, high, eva};
+
+    const ActivityMetabolicProfile& sleep_profile =
+        model.findActivityProfile(CrewActivity::Sleep, vital_response);
+    REQUIRE(sleep_profile.oxygen_g_min == Approx(0.35));
+    REQUIRE(sleep_profile.co2_g_min == Approx(0.40));
+    REQUIRE(sleep_profile.heat_w == Approx(75.0));
+    REQUIRE(sleep_profile.activity_load == Approx(0.1));
+
+    const ActivityMetabolicProfile& work_profile =
+        model.findActivityProfile(CrewActivity::NominalWork, vital_response);
+    REQUIRE(work_profile.oxygen_g_min == Approx(0.90));
+    REQUIRE(work_profile.heat_w == Approx(150.0));
+
+    const ActivityMetabolicProfile& high_profile =
+        model.findActivityProfile(CrewActivity::HighWorkload, vital_response);
+    REQUIRE(high_profile.oxygen_g_min == Approx(1.40));
+    REQUIRE(high_profile.activity_load == Approx(0.8));
+
+    const ActivityMetabolicProfile& eva_profile =
+        model.findActivityProfile(CrewActivity::EVAWork, vital_response);
+    REQUIRE(eva_profile.oxygen_g_min == Approx(1.80));
+    REQUIRE(eva_profile.co2_g_min == Approx(2.00));
+    REQUIRE(eva_profile.heat_w == Approx(300.0));
+}
+
+TEST_CASE("crew: findActivityProfile rejects missing and duplicate profiles", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig vital_response{};
+
+    ActivityMetabolicProfile nominal{};
+    nominal.activity = CrewActivity::NominalWork;
+    nominal.oxygen_g_min = 0.90;
+    nominal.co2_g_min = 1.00;
+    nominal.heat_w = 150.0;
+    nominal.activity_load = 0.5;
+
+    vital_response.activity_profiles = {nominal};
+
+    REQUIRE_THROWS_AS(
+        model.findActivityProfile(CrewActivity::Recovery, vital_response),
+        std::runtime_error);
+    REQUIRE_THROWS_AS(
+        model.findActivityProfile(CrewActivity::Sleep, vital_response),
+        std::runtime_error);
+
+    ActivityMetabolicProfile duplicate = nominal;
+    vital_response.activity_profiles = {nominal, duplicate};
+
+    REQUIRE_THROWS_AS(
+        model.findActivityProfile(CrewActivity::NominalWork, vital_response),
+        std::runtime_error);
+}
+
+namespace {
+
+ScenarioConfig makeSeverityConfig() {
+    ScenarioConfig config{};
+    config.atmosphere.inspired_o2_nominal_mmhg = 150.0;
+    config.atmosphere.inspired_o2_warning_mmhg = 120.0;
+    config.atmosphere.inspired_o2_failure_mmhg = 90.0;
+    config.atmosphere.pressure_warning_low_kpa = 70.0;
+    config.atmosphere.pressure_failure_low_kpa = 50.0;
+    config.atmosphere.co2_one_hour_limit_mmhg = 8.0;
+    config.thermal.comfort_low_c = 18.0;
+    config.thermal.comfort_high_c = 27.0;
+    config.thermal.critical_low_c = 10.0;
+    config.thermal.critical_high_c = 35.0;
+    return config;
+}
+
+CrewMemberConfig makeSensitiveCrew(double hypoxia, double co2, double thermal) {
+    CrewMemberConfig crew = makeCrew(
+        "crew_sev", "Severity Tester", "Pilot", 70.0, 14.0, 98.0, 36.8,
+        CrewActivity::NominalWork, "hab_core");
+    crew.hypoxia_sensitivity = hypoxia;
+    crew.co2_sensitivity = co2;
+    crew.thermal_sensitivity = thermal;
+    return crew;
+}
+
+DerivedTelemetry makeEnvTelemetry(double inspired_o2, double pressure_kpa, double co2_avg) {
+    DerivedTelemetry telemetry{};
+    telemetry.atmosphere.inspired_oxygen_mmhg = inspired_o2;
+    telemetry.atmosphere.cabin_pressure_kpa = pressure_kpa;
+    telemetry.atmosphere.co2_one_hour_avg_mmhg = co2_avg;
+    return telemetry;
+}
+
+}
+
+TEST_CASE("crew: hypoxia severity safe mid critical and sensitivity", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeSeverityConfig();
+    CrewMemberConfig crew = makeSensitiveCrew(1.0, 1.0, 1.0);
+
+    REQUIRE(model.calculateHypoxiaSeverity(
+        makeEnvTelemetry(130.0, 80.0, 1.0), config, crew) == Approx(0.0));
+    REQUIRE(model.calculateHypoxiaSeverity(
+        makeEnvTelemetry(120.0, 80.0, 1.0), config, crew) == Approx(0.0));
+    REQUIRE(model.calculateHypoxiaSeverity(
+        makeEnvTelemetry(105.0, 80.0, 1.0), config, crew) == Approx(0.5));
+    REQUIRE(model.calculateHypoxiaSeverity(
+        makeEnvTelemetry(90.0, 80.0, 1.0), config, crew) == Approx(1.0));
+    REQUIRE(model.calculateHypoxiaSeverity(
+        makeEnvTelemetry(80.0, 80.0, 1.0), config, crew) == Approx(1.0));
+
+    double low = model.calculateHypoxiaSeverity(
+        makeEnvTelemetry(115.0, 80.0, 1.0), config, crew);
+    double high = model.calculateHypoxiaSeverity(
+        makeEnvTelemetry(100.0, 80.0, 1.0), config, crew);
+    REQUIRE(high > low);
+
+    crew.hypoxia_sensitivity = 2.0;
+    REQUIRE(model.calculateHypoxiaSeverity(
+        makeEnvTelemetry(105.0, 80.0, 1.0), config, crew) == Approx(1.0));
+}
+
+TEST_CASE("crew: co2 severity safe mid critical and sensitivity", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeSeverityConfig();
+    CrewMemberConfig crew = makeSensitiveCrew(1.0, 1.0, 1.0);
+
+    REQUIRE(model.calculateCo2Severity(
+        makeEnvTelemetry(150.0, 80.0, 0.0), config, crew) == Approx(0.0));
+    REQUIRE(model.calculateCo2Severity(
+        makeEnvTelemetry(150.0, 80.0, 4.0), config, crew) == Approx(0.5));
+    REQUIRE(model.calculateCo2Severity(
+        makeEnvTelemetry(150.0, 80.0, 8.0), config, crew) == Approx(1.0));
+    REQUIRE(model.calculateCo2Severity(
+        makeEnvTelemetry(150.0, 80.0, 10.0), config, crew) == Approx(1.0));
+
+    double low = model.calculateCo2Severity(
+        makeEnvTelemetry(150.0, 80.0, 2.0), config, crew);
+    double high = model.calculateCo2Severity(
+        makeEnvTelemetry(150.0, 80.0, 6.0), config, crew);
+    REQUIRE(high > low);
+
+    crew.co2_sensitivity = 2.0;
+    REQUIRE(model.calculateCo2Severity(
+        makeEnvTelemetry(150.0, 80.0, 4.0), config, crew) == Approx(1.0));
+}
+
+TEST_CASE("crew: pressure severity safe mid critical", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeSeverityConfig();
+    CrewMemberConfig crew = makeSensitiveCrew(1.0, 1.0, 1.0);
+
+    REQUIRE(model.calculatePressureSeverity(
+        makeEnvTelemetry(150.0, 80.0, 1.0), config, crew) == Approx(0.0));
+    REQUIRE(model.calculatePressureSeverity(
+        makeEnvTelemetry(150.0, 70.0, 1.0), config, crew) == Approx(0.0));
+    REQUIRE(model.calculatePressureSeverity(
+        makeEnvTelemetry(150.0, 60.0, 1.0), config, crew) == Approx(0.5));
+    REQUIRE(model.calculatePressureSeverity(
+        makeEnvTelemetry(150.0, 50.0, 1.0), config, crew) == Approx(1.0));
+    REQUIRE(model.calculatePressureSeverity(
+        makeEnvTelemetry(150.0, 40.0, 1.0), config, crew) == Approx(1.0));
+
+    double low = model.calculatePressureSeverity(
+        makeEnvTelemetry(150.0, 65.0, 1.0), config, crew);
+    double high = model.calculatePressureSeverity(
+        makeEnvTelemetry(150.0, 55.0, 1.0), config, crew);
+    REQUIRE(high > low);
+}
+
+TEST_CASE("crew: thermal severity cold hot and sensitivity", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeSeverityConfig();
+    CrewMemberConfig crew = makeSensitiveCrew(1.0, 1.0, 1.0);
+    DerivedTelemetry telemetry = makeEnvTelemetry(150.0, 80.0, 1.0);
+
+    REQUIRE(model.calculateThermalSeverity(telemetry, config, crew, 22.0) == Approx(0.0));
+    REQUIRE(model.calculateThermalSeverity(telemetry, config, crew, 18.0) == Approx(0.0));
+    REQUIRE(model.calculateThermalSeverity(telemetry, config, crew, 27.0) == Approx(0.0));
+    REQUIRE(model.calculateThermalSeverity(telemetry, config, crew, 14.0) == Approx(0.5));
+    REQUIRE(model.calculateThermalSeverity(telemetry, config, crew, 10.0) == Approx(1.0));
+    REQUIRE(model.calculateThermalSeverity(telemetry, config, crew, 31.0) == Approx(0.5));
+    REQUIRE(model.calculateThermalSeverity(telemetry, config, crew, 35.0) == Approx(1.0));
+    REQUIRE(model.calculateThermalSeverity(telemetry, config, crew, 40.0) == Approx(1.0));
+
+    double mild_cold = model.calculateThermalSeverity(telemetry, config, crew, 16.0);
+    double deep_cold = model.calculateThermalSeverity(telemetry, config, crew, 12.0);
+    REQUIRE(deep_cold > mild_cold);
+
+    crew.thermal_sensitivity = 2.0;
+    REQUIRE(model.calculateThermalSeverity(telemetry, config, crew, 14.0) == Approx(1.0));
+}
+
+TEST_CASE("crew: exposure accumulates under stress and recovers when safe", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config{};
+    config.hypoxia_accumulation_rate = 0.10;
+    config.co2_accumulation_rate = 0.08;
+    config.thermal_accumulation_rate = 0.06;
+    config.hypoxia_recovery_rate = 0.05;
+    config.co2_recovery_rate = 0.04;
+    config.thermal_recovery_rate = 0.03;
+
+    CrewMemberState crew{};
+    crew.hypoxia_exposure_index = 0.0;
+    crew.co2_exposure_index = 0.0;
+    crew.thermal_exposure_index = 0.0;
+
+    model.updateExposureIndices(crew, 1.0, 1.0, 1.0, config, 1.0);
+    REQUIRE(crew.hypoxia_exposure_index == Approx(0.10));
+    REQUIRE(crew.co2_exposure_index == Approx(0.08));
+    REQUIRE(crew.thermal_exposure_index == Approx(0.06));
+
+    model.updateExposureIndices(crew, 1.0, 1.0, 1.0, config, 1.0);
+    REQUIRE(crew.hypoxia_exposure_index == Approx(0.20));
+    REQUIRE(crew.co2_exposure_index == Approx(0.16));
+    REQUIRE(crew.thermal_exposure_index == Approx(0.12));
+
+    model.updateExposureIndices(crew, 0.0, 0.0, 0.0, config, 1.0);
+    REQUIRE(crew.hypoxia_exposure_index == Approx(0.15));
+    REQUIRE(crew.co2_exposure_index == Approx(0.12));
+    REQUIRE(crew.thermal_exposure_index == Approx(0.09));
+}
+
+TEST_CASE("crew: brief exposure is less than prolonged exposure", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config{};
+    config.hypoxia_accumulation_rate = 0.10;
+    config.co2_accumulation_rate = 0.10;
+    config.thermal_accumulation_rate = 0.10;
+    config.hypoxia_recovery_rate = 0.05;
+    config.co2_recovery_rate = 0.05;
+    config.thermal_recovery_rate = 0.05;
+
+    CrewMemberState brief{};
+    CrewMemberState prolonged{};
+
+    model.updateExposureIndices(brief, 1.0, 1.0, 1.0, config, 1.0);
+    for (int i = 0; i < 5; ++i) {
+        model.updateExposureIndices(prolonged, 1.0, 1.0, 1.0, config, 1.0);
+    }
+
+    REQUIRE(brief.hypoxia_exposure_index == Approx(0.10));
+    REQUIRE(prolonged.hypoxia_exposure_index == Approx(0.50));
+    REQUIRE(prolonged.hypoxia_exposure_index > brief.hypoxia_exposure_index);
+    REQUIRE(prolonged.co2_exposure_index > brief.co2_exposure_index);
+    REQUIRE(prolonged.thermal_exposure_index > brief.thermal_exposure_index);
+}
+
+TEST_CASE("crew: exposure clamps at zero and may exceed one", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config{};
+    config.hypoxia_accumulation_rate = 0.50;
+    config.co2_accumulation_rate = 0.50;
+    config.thermal_accumulation_rate = 0.50;
+    config.hypoxia_recovery_rate = 0.20;
+    config.co2_recovery_rate = 0.20;
+    config.thermal_recovery_rate = 0.20;
+
+    CrewMemberState crew{};
+    crew.hypoxia_exposure_index = 0.05;
+    crew.co2_exposure_index = 0.05;
+    crew.thermal_exposure_index = 0.05;
+
+    model.updateExposureIndices(crew, 0.0, 0.0, 0.0, config, 1.0);
+    REQUIRE(crew.hypoxia_exposure_index == Approx(0.0));
+    REQUIRE(crew.co2_exposure_index == Approx(0.0));
+    REQUIRE(crew.thermal_exposure_index == Approx(0.0));
+
+    for (int i = 0; i < 5; ++i) {
+        model.updateExposureIndices(crew, 1.0, 1.0, 1.0, config, 1.0);
+    }
+    REQUIRE(crew.hypoxia_exposure_index == Approx(2.5));
+    REQUIRE(crew.co2_exposure_index == Approx(2.5));
+    REQUIRE(crew.thermal_exposure_index == Approx(2.5));
+}
+
+namespace {
+
+VitalResponseConfig makeFatigueConfig() {
+    VitalResponseConfig config{};
+    config.fatigue_work_rate = 0.10;
+    config.fatigue_eva_rate = 0.05;
+    config.fatigue_recovery_rate = 0.08;
+    return config;
+}
+
+ActivityMetabolicProfile makeLoadProfile(CrewActivity activity, double load) {
+    ActivityMetabolicProfile profile{};
+    profile.activity = activity;
+    profile.activity_load = load;
+    profile.oxygen_g_min = 1.0;
+    profile.co2_g_min = 1.0;
+    profile.heat_w = 100.0;
+    return profile;
+}
+
+CrewMemberState makeFatigueState(CrewActivity activity, EVAStatus eva, double fatigue) {
+    CrewMemberState crew{};
+    crew.actvity = activity;
+    crew.eva_status = eva;
+    crew.fatigue_index = fatigue;
+    return crew;
+}
+
+}
+
+TEST_CASE("crew: high workload fatigues faster than nominal work", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config = makeFatigueConfig();
+    CrewMemberConfig member = makeSensitiveCrew(1.0, 1.0, 1.0);
+    member.fitness_factor = 1.0;
+    member.fatigue_recovery_factor = 1.0;
+
+    ActivityMetabolicProfile nominal = makeLoadProfile(CrewActivity::NominalWork, 0.5);
+    ActivityMetabolicProfile high = makeLoadProfile(CrewActivity::HighWorkload, 0.8);
+
+    CrewMemberState nominal_crew =
+        makeFatigueState(CrewActivity::NominalWork, EVAStatus::Idle, 0.0);
+    CrewMemberState high_crew =
+        makeFatigueState(CrewActivity::HighWorkload, EVAStatus::Idle, 0.0);
+
+    model.updateFatigue(nominal_crew, member, nominal, 0.0, 0.0, 0.0, config, 1.0);
+    model.updateFatigue(high_crew, member, high, 0.0, 0.0, 0.0, config, 1.0);
+
+    REQUIRE(high_crew.fatigue_index > nominal_crew.fatigue_index);
+    REQUIRE(nominal_crew.fatigue_index == Approx(0.05));
+    REQUIRE(high_crew.fatigue_index == Approx(0.08));
+}
+
+TEST_CASE("crew: rest recovers fatigue and identical inputs match", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config = makeFatigueConfig();
+    CrewMemberConfig member = makeSensitiveCrew(1.0, 1.0, 1.0);
+    member.fitness_factor = 1.0;
+    member.fatigue_recovery_factor = 1.0;
+
+    ActivityMetabolicProfile rest = makeLoadProfile(CrewActivity::Resting, 0.2);
+
+    CrewMemberState first = makeFatigueState(CrewActivity::Resting, EVAStatus::Idle, 0.50);
+    CrewMemberState second = makeFatigueState(CrewActivity::Resting, EVAStatus::Idle, 0.50);
+
+    model.updateFatigue(first, member, rest, 0.0, 0.0, 0.0, config, 1.0);
+    model.updateFatigue(second, member, rest, 0.0, 0.0, 0.0, config, 1.0);
+
+    // accumulate 0.2*0.10=0.02, recover 0.08 → net -0.06
+    REQUIRE(first.fatigue_index == Approx(0.44));
+    REQUIRE(second.fatigue_index == Approx(first.fatigue_index));
+}
+
+TEST_CASE("crew: active EVA adds fatigue and fitness slows accumulation", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config = makeFatigueConfig();
+    ActivityMetabolicProfile work = makeLoadProfile(CrewActivity::EVAWork, 0.5);
+
+    CrewMemberConfig baseline = makeSensitiveCrew(1.0, 1.0, 1.0);
+    baseline.fitness_factor = 1.0;
+    baseline.fatigue_recovery_factor = 1.0;
+
+    CrewMemberConfig fit = baseline;
+    fit.fitness_factor = 2.0;
+
+    CrewMemberState idle =
+        makeFatigueState(CrewActivity::EVAWork, EVAStatus::Idle, 0.0);
+    CrewMemberState eva =
+        makeFatigueState(CrewActivity::EVAWork, EVAStatus::Working, 0.0);
+    CrewMemberState fit_eva =
+        makeFatigueState(CrewActivity::EVAWork, EVAStatus::Working, 0.0);
+
+    model.updateFatigue(idle, baseline, work, 0.0, 0.0, 0.0, config, 1.0);
+    model.updateFatigue(eva, baseline, work, 0.0, 0.0, 0.0, config, 1.0);
+    model.updateFatigue(fit_eva, fit, work, 0.0, 0.0, 0.0, config, 1.0);
+
+    REQUIRE(eva.fatigue_index > idle.fatigue_index);
+    REQUIRE(eva.fatigue_index == Approx(0.10));
+    REQUIRE(fit_eva.fatigue_index == Approx(0.05));
+}
+
+TEST_CASE("crew: fatigue clamps to 0-1", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config = makeFatigueConfig();
+    config.fatigue_work_rate = 1.0;
+    CrewMemberConfig member = makeSensitiveCrew(1.0, 1.0, 1.0);
+    member.fitness_factor = 1.0;
+    member.fatigue_recovery_factor = 1.0;
+
+    ActivityMetabolicProfile high = makeLoadProfile(CrewActivity::HighWorkload, 1.0);
+    CrewMemberState crew =
+        makeFatigueState(CrewActivity::HighWorkload, EVAStatus::Working, 0.95);
+
+    model.updateFatigue(crew, member, high, 1.0, 1.0, 1.0, config, 1.0);
+    REQUIRE(crew.fatigue_index == Approx(1.0));
+
+    ActivityMetabolicProfile sleep = makeLoadProfile(CrewActivity::Sleep, 0.0);
+    crew = makeFatigueState(CrewActivity::Sleep, EVAStatus::Idle, 0.02);
+    config.fatigue_recovery_rate = 0.50;
+    model.updateFatigue(crew, member, sleep, 0.0, 0.0, 0.0, config, 1.0);
+    REQUIRE(crew.fatigue_index == Approx(0.0));
+}
+
+TEST_CASE("crew: metabolic outputs match NASA-reference profile fixtures", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config{};
+
+    ActivityMetabolicProfile sleep{};
+    sleep.activity = CrewActivity::Sleep;
+    sleep.oxygen_g_min = 0.35;
+    sleep.co2_g_min = 0.40;
+    sleep.heat_w = 75.0;
+    sleep.activity_load = 0.1;
+
+    ActivityMetabolicProfile nominal{};
+    nominal.activity = CrewActivity::NominalWork;
+    nominal.oxygen_g_min = 0.90;
+    nominal.co2_g_min = 1.00;
+    nominal.heat_w = 150.0;
+    nominal.activity_load = 0.5;
+
+    ActivityMetabolicProfile high{};
+    high.activity = CrewActivity::HighWorkload;
+    high.oxygen_g_min = 1.40;
+    high.co2_g_min = 1.55;
+    high.heat_w = 220.0;
+    high.activity_load = 0.8;
+
+    config.activity_profiles = {sleep, nominal, high};
+
+    CrewMemberConfig member = makeSensitiveCrew(1.0, 1.0, 1.0);
+    CrewMemberState crew{};
+    crew.physical_performance_factor = 1.0;
+    crew.oxygen_rationing_active = false;
+
+    model.updateMetabolicOutputs(crew, member, nominal, config);
+    REQUIRE(crew.oxygen_consumption_g_min == Approx(0.90));
+    REQUIRE(crew.co2_production_g_min == Approx(1.00));
+    REQUIRE(crew.heat_output_w == Approx(150.0));
+
+    model.updateMetabolicOutputs(crew, member, high, config);
+    REQUIRE(crew.oxygen_consumption_g_min == Approx(1.40));
+    REQUIRE(crew.co2_production_g_min == Approx(1.55));
+    REQUIRE(crew.heat_output_w == Approx(220.0));
+}
+
+TEST_CASE("crew: rationing reduces metabolic rates but not below Sleep floor", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config{};
+
+    ActivityMetabolicProfile sleep{};
+    sleep.activity = CrewActivity::Sleep;
+    sleep.oxygen_g_min = 0.35;
+    sleep.co2_g_min = 0.40;
+    sleep.heat_w = 75.0;
+    sleep.activity_load = 0.1;
+
+    ActivityMetabolicProfile nominal{};
+    nominal.activity = CrewActivity::NominalWork;
+    nominal.oxygen_g_min = 0.90;
+    nominal.co2_g_min = 1.00;
+    nominal.heat_w = 150.0;
+    nominal.activity_load = 0.5;
+
+    config.activity_profiles = {sleep, nominal};
+
+    CrewMemberConfig member = makeSensitiveCrew(1.0, 1.0, 1.0);
+    CrewMemberState crew{};
+    crew.physical_performance_factor = 1.0;
+    crew.oxygen_rationing_active = true;
+
+    model.updateMetabolicOutputs(crew, member, nominal, config);
+    REQUIRE(crew.oxygen_consumption_g_min == Approx(0.675));
+    REQUIRE(crew.co2_production_g_min == Approx(0.75));
+    REQUIRE(crew.heat_output_w == Approx(112.5));
+
+    ActivityMetabolicProfile near_sleep = sleep;
+    near_sleep.activity = CrewActivity::Resting;
+    near_sleep.oxygen_g_min = 0.40;
+    near_sleep.co2_g_min = 0.45;
+    near_sleep.heat_w = 80.0;
+    config.activity_profiles.push_back(near_sleep);
+
+    model.updateMetabolicOutputs(crew, member, near_sleep, config);
+    REQUIRE(crew.oxygen_consumption_g_min == Approx(0.35));
+    REQUIRE(crew.co2_production_g_min == Approx(0.40));
+    REQUIRE(crew.heat_output_w == Approx(75.0));
+}
+
+TEST_CASE("crew: performance scales O2 CO2 and heat consistently", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config{};
+
+    ActivityMetabolicProfile sleep{};
+    sleep.activity = CrewActivity::Sleep;
+    sleep.oxygen_g_min = 0.35;
+    sleep.co2_g_min = 0.40;
+    sleep.heat_w = 75.0;
+
+    ActivityMetabolicProfile nominal{};
+    nominal.activity = CrewActivity::NominalWork;
+    nominal.oxygen_g_min = 1.00;
+    nominal.co2_g_min = 1.20;
+    nominal.heat_w = 200.0;
+
+    config.activity_profiles = {sleep, nominal};
+
+    CrewMemberConfig member = makeSensitiveCrew(1.0, 1.0, 1.0);
+    CrewMemberState crew{};
+    crew.physical_performance_factor = 0.5;
+    crew.oxygen_rationing_active = false;
+
+    model.updateMetabolicOutputs(crew, member, nominal, config);
+    REQUIRE(crew.oxygen_consumption_g_min == Approx(0.50));
+    REQUIRE(crew.co2_production_g_min == Approx(0.60));
+    REQUIRE(crew.heat_output_w == Approx(100.0));
+}
+
+namespace {
+
+VitalResponseConfig makeVitalGainsConfig() {
+    VitalResponseConfig config{};
+    config.hr_activity_gain = 40.0;
+    config.hr_hypoxia_gain = 30.0;
+    config.hr_co2_gain = 20.0;
+    config.hr_thermal_gain = 15.0;
+    config.hr_fatigue_gain = 25.0;
+    config.hr_min_bpm = 40.0;
+    config.hr_max_bpm = 180.0;
+
+    config.rr_activity_gain = 10.0;
+    config.rr_hypoxia_gain = 8.0;
+    config.rr_co2_gain = 6.0;
+    config.rr_thermal_gain = 4.0;
+    config.rr_min_bpm = 8.0;
+    config.rr_max_bpm = 40.0;
+
+    config.spo2_hypoxia_gain = 10.0;
+    config.spo2_pressure_gain = 5.0;
+    config.spo2_activity_gain = 2.0;
+    config.spo2_exposure_gain = 4.0;
+    config.spo2_min_percent = 70.0;
+    config.spo2_max_percent = 100.0;
+
+    config.core_temp_environment_gain = 0.5;
+    config.core_temp_activity_gain = 0.4;
+    config.core_temp_time_constant_min = 1.0;
+    config.core_temp_min_c = 35.0;
+    config.core_temp_max_c = 40.0;
+    return config;
+}
+
+}
+
+TEST_CASE("crew: HR and RR rise with activity and severity", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config = makeVitalGainsConfig();
+    CrewMemberConfig member = makeSensitiveCrew(1.0, 1.0, 1.0);
+    member.baseline_heart_rate_bpm = 60.0;
+    member.baseline_respiratory_rate_bpm = 12.0;
+
+    ActivityMetabolicProfile rest = makeLoadProfile(CrewActivity::Resting, 0.2);
+    ActivityMetabolicProfile high = makeLoadProfile(CrewActivity::HighWorkload, 0.8);
+    DerivedTelemetry telemetry{};
+
+    CrewMemberState rest_crew{};
+    rest_crew.fatigue_index = 0.0;
+    model.updateVitalSigns(
+        rest_crew, member, rest, telemetry, 0.0, 0.0, 0.0, 0.0, config, 1.0, 22.0);
+
+    CrewMemberState high_crew{};
+    high_crew.fatigue_index = 0.0;
+    model.updateVitalSigns(
+        high_crew, member, high, telemetry, 0.0, 0.0, 0.0, 0.0, config, 1.0, 22.0);
+
+    REQUIRE(high_crew.heart_rate_bpm > rest_crew.heart_rate_bpm);
+    REQUIRE(high_crew.respiratory_rate_bpm > rest_crew.respiratory_rate_bpm);
+    REQUIRE(rest_crew.heart_rate_bpm == Approx(68.0));
+    REQUIRE(rest_crew.respiratory_rate_bpm == Approx(14.0));
+    REQUIRE(high_crew.heart_rate_bpm == Approx(92.0));
+    REQUIRE(high_crew.respiratory_rate_bpm == Approx(20.0));
+
+    CrewMemberState stressed = rest_crew;
+    model.updateVitalSigns(
+        stressed, member, rest, telemetry, 1.0, 1.0, 0.0, 1.0, config, 1.0, 22.0);
+    REQUIRE(stressed.heart_rate_bpm > rest_crew.heart_rate_bpm);
+    REQUIRE(stressed.respiratory_rate_bpm > rest_crew.respiratory_rate_bpm);
+    REQUIRE(stressed.heart_rate_bpm == Approx(133.0));
+    REQUIRE(stressed.respiratory_rate_bpm == Approx(32.0));
+}
+
+TEST_CASE("crew: HR and RR return toward baseline under safe rest", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config = makeVitalGainsConfig();
+    CrewMemberConfig member = makeSensitiveCrew(1.0, 1.0, 1.0);
+    member.baseline_heart_rate_bpm = 62.0;
+    member.baseline_respiratory_rate_bpm = 12.0;
+
+    ActivityMetabolicProfile rest = makeLoadProfile(CrewActivity::Resting, 0.0);
+    DerivedTelemetry telemetry{};
+
+    CrewMemberState crew{};
+    crew.fatigue_index = 0.0;
+    crew.heart_rate_bpm = 140.0;
+    crew.respiratory_rate_bpm = 30.0;
+
+    model.updateVitalSigns(
+        crew, member, rest, telemetry, 0.0, 0.0, 0.0, 0.0, config, 1.0, 22.0);
+
+    REQUIRE(crew.heart_rate_bpm == Approx(62.0));
+    REQUIRE(crew.respiratory_rate_bpm == Approx(12.0));
+}
+
+TEST_CASE("crew: HR and RR clamp to configured bounds", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config = makeVitalGainsConfig();
+    config.hr_activity_gain = 200.0;
+    config.rr_activity_gain = 100.0;
+    config.hr_max_bpm = 120.0;
+    config.rr_max_bpm = 25.0;
+
+    CrewMemberConfig member = makeSensitiveCrew(1.0, 1.0, 1.0);
+    member.baseline_heart_rate_bpm = 60.0;
+    member.baseline_respiratory_rate_bpm = 12.0;
+
+    ActivityMetabolicProfile high = makeLoadProfile(CrewActivity::HighWorkload, 1.0);
+    DerivedTelemetry telemetry{};
+    CrewMemberState crew{};
+    crew.fatigue_index = 1.0;
+
+    model.updateVitalSigns(
+        crew, member, high, telemetry, 1.0, 1.0, 0.0, 1.0, config, 1.0, 22.0);
+
+    REQUIRE(crew.heart_rate_bpm == Approx(120.0));
+    REQUIRE(crew.respiratory_rate_bpm == Approx(25.0));
+}
+
+TEST_CASE("crew: SpO2 declines with hypoxia and recovers when safe", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config = makeVitalGainsConfig();
+    config.core_temp_time_constant_min = 0.0;
+
+    CrewMemberConfig member = makeSensitiveCrew(1.0, 1.0, 1.0);
+    member.baseline_spo2_percent = 98.0;
+    member.baseline_core_temperature_c = 36.8;
+
+    ActivityMetabolicProfile rest = makeLoadProfile(CrewActivity::Resting, 0.0);
+    DerivedTelemetry telemetry{};
+
+    CrewMemberState mild{};
+    mild.spo2_percent = 98.0;
+    mild.core_temperature_c = 36.8;
+    mild.hypoxia_exposure_index = 0.0;
+    model.updateVitalSigns(
+        mild, member, rest, telemetry, 0.5, 0.0, 0.0, 0.0, config, 1.0, 22.0);
+
+    CrewMemberState severe{};
+    severe.spo2_percent = 98.0;
+    severe.core_temperature_c = 36.8;
+    severe.hypoxia_exposure_index = 0.0;
+    model.updateVitalSigns(
+        severe, member, rest, telemetry, 1.0, 0.0, 0.0, 0.0, config, 1.0, 22.0);
+
+    REQUIRE(severe.spo2_percent < mild.spo2_percent);
+    REQUIRE(mild.spo2_percent == Approx(93.0));
+    REQUIRE(severe.spo2_percent == Approx(88.0));
+
+    severe.hypoxia_exposure_index = 0.0;
+    model.updateVitalSigns(
+        severe, member, rest, telemetry, 0.0, 0.0, 0.0, 0.0, config, 1.0, 22.0);
+    REQUIRE(severe.spo2_percent == Approx(98.0));
+}
+
+TEST_CASE("crew: prolonged hypoxia exposure lowers SpO2 more than brief", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config = makeVitalGainsConfig();
+    config.core_temp_time_constant_min = 0.0;
+
+    CrewMemberConfig member = makeSensitiveCrew(1.0, 1.0, 1.0);
+    member.baseline_spo2_percent = 98.0;
+    member.baseline_core_temperature_c = 36.8;
+
+    ActivityMetabolicProfile rest = makeLoadProfile(CrewActivity::Resting, 0.0);
+    DerivedTelemetry telemetry{};
+
+    CrewMemberState brief{};
+    brief.spo2_percent = 98.0;
+    brief.core_temperature_c = 36.8;
+    brief.hypoxia_exposure_index = 0.0;
+    model.updateVitalSigns(
+        brief, member, rest, telemetry, 1.0, 0.0, 0.0, 0.0, config, 1.0, 22.0);
+
+    CrewMemberState prolonged{};
+    prolonged.spo2_percent = 98.0;
+    prolonged.core_temperature_c = 36.8;
+    prolonged.hypoxia_exposure_index = 1.0;
+    model.updateVitalSigns(
+        prolonged, member, rest, telemetry, 1.0, 0.0, 0.0, 0.0, config, 1.0, 22.0);
+
+    REQUIRE(prolonged.spo2_percent < brief.spo2_percent);
+    REQUIRE(brief.spo2_percent == Approx(88.0));
+    REQUIRE(prolonged.spo2_percent == Approx(84.0));
+}
+
+TEST_CASE("crew: core temperature lags and follows cabin direction", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config = makeVitalGainsConfig();
+    config.core_temp_time_constant_min = 1.0;
+
+    CrewMemberConfig member = makeSensitiveCrew(1.0, 1.0, 1.0);
+    member.baseline_spo2_percent = 98.0;
+    member.baseline_core_temperature_c = 36.8;
+
+    ActivityMetabolicProfile rest = makeLoadProfile(CrewActivity::Resting, 0.0);
+    DerivedTelemetry telemetry{};
+
+    CrewMemberState hot{};
+    hot.spo2_percent = 98.0;
+    hot.core_temperature_c = 36.8;
+    model.updateVitalSigns(
+        hot, member, rest, telemetry, 0.0, 0.0, 0.0, 0.0, config, 1.0, 40.0);
+
+    CrewMemberState cold{};
+    cold.spo2_percent = 98.0;
+    cold.core_temperature_c = 36.8;
+    model.updateVitalSigns(
+        cold, member, rest, telemetry, 0.0, 0.0, 0.0, 0.0, config, 1.0, 30.0);
+
+    // target_hot = 36.8 + 0.5*(40-36.8) = 38.4; blend 0.5 → 37.6
+    REQUIRE(hot.core_temperature_c == Approx(37.6));
+    // target_cold = 36.8 + 0.5*(30-36.8) = 33.4 → clamp 35.0; blend 0.5 → 35.9
+    REQUIRE(cold.core_temperature_c == Approx(35.9));
+    REQUIRE(hot.core_temperature_c > 36.8);
+    REQUIRE(cold.core_temperature_c < 36.8);
+    REQUIRE(hot.core_temperature_c < 38.4);
+}
+
+TEST_CASE("crew: performance declines with exposure and recovers when clear", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config{};
+    config.cognitive_hypoxia_weight = 0.25;
+    config.cognitive_co2_weight = 0.25;
+    config.cognitive_thermal_weight = 0.25;
+    config.cognitive_fatigue_weight = 0.25;
+    config.physical_hypoxia_weight = 0.20;
+    config.physical_co2_weight = 0.20;
+    config.physical_thermal_weight = 0.20;
+    config.physical_fatigue_weight = 0.20;
+
+    ActivityMetabolicProfile rest = makeLoadProfile(CrewActivity::Resting, 0.0);
+    CrewMemberState crew{};
+    crew.hypoxia_exposure_index = 0.0;
+    crew.co2_exposure_index = 0.0;
+    crew.thermal_exposure_index = 0.0;
+    crew.fatigue_index = 0.0;
+
+    model.updatePerformance(crew, rest, config);
+    REQUIRE(crew.cognitive_performance_factor == Approx(1.0));
+    REQUIRE(crew.physical_performance_factor == Approx(1.0));
+
+    crew.hypoxia_exposure_index = 1.0;
+    model.updatePerformance(crew, rest, config);
+    REQUIRE(crew.cognitive_performance_factor == Approx(0.75));
+    REQUIRE(crew.physical_performance_factor == Approx(0.80));
+
+    double impaired_cognitive = crew.cognitive_performance_factor;
+    crew.hypoxia_exposure_index = 0.0;
+    model.updatePerformance(crew, rest, config);
+    REQUIRE(crew.cognitive_performance_factor > impaired_cognitive);
+    REQUIRE(crew.cognitive_performance_factor == Approx(1.0));
+}
+
+TEST_CASE("crew: activity load and fatigue only reduce performance", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config{};
+    config.cognitive_hypoxia_weight = 0.0;
+    config.cognitive_co2_weight = 0.0;
+    config.cognitive_thermal_weight = 0.0;
+    config.cognitive_fatigue_weight = 0.5;
+    config.physical_hypoxia_weight = 0.0;
+    config.physical_co2_weight = 0.0;
+    config.physical_thermal_weight = 0.0;
+    config.physical_fatigue_weight = 0.5;
+
+    ActivityMetabolicProfile idle = makeLoadProfile(CrewActivity::Resting, 0.0);
+    ActivityMetabolicProfile work = makeLoadProfile(CrewActivity::HighWorkload, 0.8);
+
+    CrewMemberState rested{};
+    rested.fatigue_index = 0.0;
+    model.updatePerformance(rested, idle, config);
+
+    CrewMemberState loaded{};
+    loaded.fatigue_index = 0.0;
+    model.updatePerformance(loaded, work, config);
+
+    REQUIRE(loaded.cognitive_performance_factor < rested.cognitive_performance_factor);
+    REQUIRE(loaded.physical_performance_factor < rested.physical_performance_factor);
+    REQUIRE(loaded.cognitive_performance_factor == Approx(0.6));
+    REQUIRE(loaded.physical_performance_factor == Approx(0.6));
+
+    CrewMemberState fatigued{};
+    fatigued.fatigue_index = 0.4;
+    model.updatePerformance(fatigued, idle, config);
+    REQUIRE(fatigued.cognitive_performance_factor == Approx(0.8));
+    REQUIRE(fatigued.physical_performance_factor == Approx(0.8));
+}
+
+TEST_CASE("crew: performance factors clamp to 0-1", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config{};
+    config.cognitive_hypoxia_weight = 1.0;
+    config.cognitive_co2_weight = 1.0;
+    config.cognitive_thermal_weight = 1.0;
+    config.cognitive_fatigue_weight = 1.0;
+    config.physical_hypoxia_weight = 1.0;
+    config.physical_co2_weight = 1.0;
+    config.physical_thermal_weight = 1.0;
+    config.physical_fatigue_weight = 1.0;
+
+    ActivityMetabolicProfile work = makeLoadProfile(CrewActivity::HighWorkload, 1.0);
+    CrewMemberState crew{};
+    crew.hypoxia_exposure_index = 2.0;
+    crew.co2_exposure_index = 2.0;
+    crew.thermal_exposure_index = 2.0;
+    crew.fatigue_index = 1.0;
+
+    model.updatePerformance(crew, work, config);
+    REQUIRE(crew.cognitive_performance_factor == Approx(0.0));
+    REQUIRE(crew.physical_performance_factor == Approx(0.0));
+}
+
+namespace {
+
+VitalResponseConfig makeAlarmConfig() {
+    VitalResponseConfig config{};
+    config.spo2_warning_percent = 94.0;
+    config.spo2_critical_percent = 88.0;
+    config.heart_rate_warning_bpm = 100.0;
+    config.respiratory_rate_warning_bpm = 20.0;
+    config.core_temp_low_c = 36.0;
+    config.core_temp_high_c = 38.0;
+    config.fatigue_warning_fraction = 0.6;
+    config.performance_abort_fraction = 0.3;
+    return config;
+}
+
+CrewMemberState makeHealthyCrew() {
+    CrewMemberState crew{};
+    crew.actvity = CrewActivity::NominalWork;
+    crew.eva_status = EVAStatus::Idle;
+    crew.spo2_percent = 98.0;
+    crew.heart_rate_bpm = 70.0;
+    crew.respiratory_rate_bpm = 14.0;
+    crew.core_temperature_c = 36.8;
+    crew.fatigue_index = 0.1;
+    crew.hypoxia_exposure_index = 0.0;
+    crew.co2_exposure_index = 0.0;
+    crew.thermal_exposure_index = 0.0;
+    crew.cognitive_performance_factor = 1.0;
+    crew.physical_performance_factor = 1.0;
+    crew.health_status = CrewHealthStatus::Nominal;
+    return crew;
+}
+
+bool hasAlarm(const CrewMemberState& crew, CrewAlarmType type) {
+    for (CrewAlarmType alarm : crew.active_alarms) {
+        if (alarm == type) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}
+
+TEST_CASE("crew: health alarms fire for each configured threshold", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config = makeAlarmConfig();
+    DerivedTelemetry telemetry{};
+    telemetry.eva.eva_safe_return_margin_min = 100.0;
+
+    CrewMemberState hypoxia = makeHealthyCrew();
+    hypoxia.spo2_percent = 93.0;
+    model.updateHealthStatusAndAlarms(hypoxia, telemetry, config);
+    REQUIRE(hasAlarm(hypoxia, CrewAlarmType::Hypoxia));
+    REQUIRE(hypoxia.health_status == CrewHealthStatus::Impaired);
+
+    CrewMemberState critical_o2 = makeHealthyCrew();
+    critical_o2.spo2_percent = 85.0;
+    model.updateHealthStatusAndAlarms(critical_o2, telemetry, config);
+    REQUIRE(hasAlarm(critical_o2, CrewAlarmType::Hypoxia));
+    REQUIRE(critical_o2.health_status == CrewHealthStatus::Critical);
+
+    CrewMemberState co2 = makeHealthyCrew();
+    co2.co2_exposure_index = 1.2;
+    model.updateHealthStatusAndAlarms(co2, telemetry, config);
+    REQUIRE(hasAlarm(co2, CrewAlarmType::Hypercapnia));
+    REQUIRE(co2.health_status == CrewHealthStatus::Critical);
+
+    CrewMemberState hr = makeHealthyCrew();
+    hr.heart_rate_bpm = 110.0;
+    model.updateHealthStatusAndAlarms(hr, telemetry, config);
+    REQUIRE(hasAlarm(hr, CrewAlarmType::Tachycardia));
+    REQUIRE(hr.health_status == CrewHealthStatus::ElevatedStress);
+
+    CrewMemberState rr = makeHealthyCrew();
+    rr.respiratory_rate_bpm = 22.0;
+    model.updateHealthStatusAndAlarms(rr, telemetry, config);
+    REQUIRE(hasAlarm(rr, CrewAlarmType::Respiratory));
+    REQUIRE(rr.health_status == CrewHealthStatus::ElevatedStress);
+
+    CrewMemberState thermal = makeHealthyCrew();
+    thermal.core_temperature_c = 38.5;
+    model.updateHealthStatusAndAlarms(thermal, telemetry, config);
+    REQUIRE(hasAlarm(thermal, CrewAlarmType::Thermal));
+    REQUIRE(thermal.health_status == CrewHealthStatus::Impaired);
+
+    CrewMemberState fatigue = makeHealthyCrew();
+    fatigue.fatigue_index = 0.7;
+    model.updateHealthStatusAndAlarms(fatigue, telemetry, config);
+    REQUIRE(hasAlarm(fatigue, CrewAlarmType::Fatigue));
+    REQUIRE(fatigue.health_status == CrewHealthStatus::Impaired);
+
+    CrewMemberState abort = makeHealthyCrew();
+    abort.cognitive_performance_factor = 0.2;
+    model.updateHealthStatusAndAlarms(abort, telemetry, config);
+    REQUIRE(hasAlarm(abort, CrewAlarmType::Performance));
+    REQUIRE(abort.health_status == CrewHealthStatus::Incapacitated);
+
+    CrewMemberState eva = makeHealthyCrew();
+    eva.eva_status = EVAStatus::Working;
+    telemetry.eva.eva_safe_return_margin_min = -5.0;
+    model.updateHealthStatusAndAlarms(eva, telemetry, config);
+    REQUIRE(hasAlarm(eva, CrewAlarmType::EVAReturn));
+    REQUIRE(eva.health_status == CrewHealthStatus::Critical);
+}
+
+TEST_CASE("crew: clearing conditions removes non-latched alarms", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config = makeAlarmConfig();
+    DerivedTelemetry telemetry{};
+    telemetry.eva.eva_safe_return_margin_min = 100.0;
+
+    CrewMemberState crew = makeHealthyCrew();
+    crew.spo2_percent = 92.0;
+    crew.heart_rate_bpm = 105.0;
+    model.updateHealthStatusAndAlarms(crew, telemetry, config);
+    REQUIRE(hasAlarm(crew, CrewAlarmType::Hypoxia));
+    REQUIRE(hasAlarm(crew, CrewAlarmType::Tachycardia));
+    REQUIRE(crew.health_status == CrewHealthStatus::Impaired);
+
+    crew.spo2_percent = 98.0;
+    crew.heart_rate_bpm = 70.0;
+    model.updateHealthStatusAndAlarms(crew, telemetry, config);
+    REQUIRE(crew.active_alarms.empty());
+    REQUIRE(crew.health_status == CrewHealthStatus::Nominal);
+}
+
+TEST_CASE("crew: nominal when all vitals are inside thresholds", "[crew]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config = makeAlarmConfig();
+    DerivedTelemetry telemetry{};
+    telemetry.eva.eva_safe_return_margin_min = 100.0;
+
+    CrewMemberState crew = makeHealthyCrew();
+    model.updateHealthStatusAndAlarms(crew, telemetry, config);
+    REQUIRE(crew.active_alarms.empty());
+    REQUIRE(crew.health_status == CrewHealthStatus::Nominal);
+}
+
+namespace {
+
+ScenarioConfig makeFullPhysiologyConfig() {
+    ScenarioConfig config = makeSeverityConfig();
+
+    ActivityMetabolicProfile sleep{};
+    sleep.activity = CrewActivity::Sleep;
+    sleep.oxygen_g_min = 0.35;
+    sleep.co2_g_min = 0.40;
+    sleep.heat_w = 75.0;
+    sleep.activity_load = 0.1;
+
+    ActivityMetabolicProfile resting{};
+    resting.activity = CrewActivity::Resting;
+    resting.oxygen_g_min = 0.50;
+    resting.co2_g_min = 0.60;
+    resting.heat_w = 100.0;
+    resting.activity_load = 0.2;
+
+    config.vital_response.activity_profiles = {sleep, resting};
+
+    config.vital_response.hypoxia_accumulation_rate = 0.10;
+    config.vital_response.co2_accumulation_rate = 0.08;
+    config.vital_response.thermal_accumulation_rate = 0.06;
+    config.vital_response.hypoxia_recovery_rate = 0.05;
+    config.vital_response.co2_recovery_rate = 0.04;
+    config.vital_response.thermal_recovery_rate = 0.03;
+
+    config.vital_response.fatigue_work_rate = 0.05;
+    config.vital_response.fatigue_eva_rate = 0.05;
+    config.vital_response.fatigue_recovery_rate = 0.08;
+
+    config.vital_response.hr_activity_gain = 40.0;
+    config.vital_response.hr_hypoxia_gain = 30.0;
+    config.vital_response.hr_co2_gain = 20.0;
+    config.vital_response.hr_thermal_gain = 15.0;
+    config.vital_response.hr_fatigue_gain = 25.0;
+    config.vital_response.hr_min_bpm = 40.0;
+    config.vital_response.hr_max_bpm = 180.0;
+
+    config.vital_response.rr_activity_gain = 10.0;
+    config.vital_response.rr_hypoxia_gain = 8.0;
+    config.vital_response.rr_co2_gain = 6.0;
+    config.vital_response.rr_thermal_gain = 4.0;
+    config.vital_response.rr_min_bpm = 8.0;
+    config.vital_response.rr_max_bpm = 40.0;
+
+    config.vital_response.spo2_hypoxia_gain = 10.0;
+    config.vital_response.spo2_pressure_gain = 5.0;
+    config.vital_response.spo2_activity_gain = 2.0;
+    config.vital_response.spo2_exposure_gain = 4.0;
+    config.vital_response.spo2_min_percent = 70.0;
+    config.vital_response.spo2_max_percent = 100.0;
+
+    config.vital_response.core_temp_environment_gain = 0.0;
+    config.vital_response.core_temp_activity_gain = 0.4;
+    config.vital_response.core_temp_time_constant_min = 0.0;
+    config.vital_response.core_temp_min_c = 35.0;
+    config.vital_response.core_temp_max_c = 40.0;
+
+    config.vital_response.cognitive_hypoxia_weight = 0.25;
+    config.vital_response.cognitive_co2_weight = 0.25;
+    config.vital_response.cognitive_thermal_weight = 0.25;
+    config.vital_response.cognitive_fatigue_weight = 0.25;
+    config.vital_response.physical_hypoxia_weight = 0.20;
+    config.vital_response.physical_co2_weight = 0.20;
+    config.vital_response.physical_thermal_weight = 0.20;
+    config.vital_response.physical_fatigue_weight = 0.20;
+
+    config.vital_response.spo2_warning_percent = 94.0;
+    config.vital_response.spo2_critical_percent = 88.0;
+    config.vital_response.heart_rate_warning_bpm = 100.0;
+    config.vital_response.respiratory_rate_warning_bpm = 20.0;
+    config.vital_response.core_temp_low_c = 36.0;
+    config.vital_response.core_temp_high_c = 38.0;
+    config.vital_response.fatigue_warning_fraction = 0.6;
+    config.vital_response.performance_abort_fraction = 0.3;
+
+    return config;
+}
+
+CrewMemberConfig makePhysiologyMember() {
+    CrewMemberConfig member = makeSensitiveCrew(1.0, 1.0, 1.0);
+    member.baseline_heart_rate_bpm = 62.0;
+    member.baseline_respiratory_rate_bpm = 12.0;
+    member.baseline_spo2_percent = 98.0;
+    member.baseline_core_temperature_c = 36.8;
+    member.fitness_factor = 1.0;
+    member.fatigue_recovery_factor = 1.0;
+    member.initial_activity = CrewActivity::Resting;
+    return member;
+}
+
+CrewMemberState makeBaselineCrewState(const CrewMemberConfig& member) {
+    CrewMemberState crew{};
+    crew.crew_id = member.crew_id;
+    crew.actvity = CrewActivity::Resting;
+    crew.eva_status = EVAStatus::Idle;
+    crew.location_module = "hab_core";
+    crew.heart_rate_bpm = member.baseline_heart_rate_bpm;
+    crew.respiratory_rate_bpm = member.baseline_respiratory_rate_bpm;
+    crew.spo2_percent = member.baseline_spo2_percent;
+    crew.core_temperature_c = member.baseline_core_temperature_c;
+    crew.hypoxia_exposure_index = 0.0;
+    crew.co2_exposure_index = 0.0;
+    crew.thermal_exposure_index = 0.0;
+    crew.fatigue_index = 0.0;
+    crew.cognitive_performance_factor = 1.0;
+    crew.physical_performance_factor = 1.0;
+    crew.oxygen_consumption_g_min = 0.50;
+    crew.co2_production_g_min = 0.60;
+    crew.heat_output_w = 100.0;
+    crew.oxygen_rationing_active = false;
+    crew.health_status = CrewHealthStatus::Nominal;
+    return crew;
+}
+
+}
+
+TEST_CASE("crew: safe-step updateCrewMember stays near baseline", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeFullPhysiologyConfig();
+    CrewMemberConfig member = makePhysiologyMember();
+    CrewMemberState crew = makeBaselineCrewState(member);
+
+    DerivedTelemetry telemetry{};
+    telemetry.atmosphere.inspired_oxygen_mmhg = 150.0;
+    telemetry.atmosphere.cabin_pressure_kpa = 80.0;
+    telemetry.atmosphere.co2_one_hour_avg_mmhg = 0.0;
+    telemetry.eva.eva_safe_return_margin_min = 200.0;
+
+    model.updateCrewMember(crew, member, telemetry, config, 60.0, 22.0);
+
+    REQUIRE(crew.heart_rate_bpm == Approx(70.0));
+    REQUIRE(crew.respiratory_rate_bpm == Approx(14.0));
+    REQUIRE(crew.spo2_percent == Approx(97.6));
+    REQUIRE(crew.core_temperature_c == Approx(36.88));
+    REQUIRE(crew.hypoxia_exposure_index == Approx(0.0));
+    REQUIRE(crew.co2_exposure_index == Approx(0.0));
+    REQUIRE(crew.thermal_exposure_index == Approx(0.0));
+    REQUIRE(crew.oxygen_consumption_g_min == Approx(0.50));
+    REQUIRE(crew.co2_production_g_min == Approx(0.60));
+    REQUIRE(crew.heat_output_w == Approx(100.0));
+    REQUIRE(crew.cognitive_performance_factor == Approx(0.95));
+    REQUIRE(crew.physical_performance_factor == Approx(0.96));
+    REQUIRE(crew.health_status == CrewHealthStatus::Nominal);
+    REQUIRE(crew.active_alarms.empty());
+}
+
+TEST_CASE("crew: low-O2 updateCrewMember moves fields in expected directions", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeFullPhysiologyConfig();
+    CrewMemberConfig member = makePhysiologyMember();
+    CrewMemberState safe = makeBaselineCrewState(member);
+    CrewMemberState hypoxic = makeBaselineCrewState(member);
+
+    DerivedTelemetry safe_telemetry{};
+    safe_telemetry.atmosphere.inspired_oxygen_mmhg = 150.0;
+    safe_telemetry.atmosphere.cabin_pressure_kpa = 80.0;
+    safe_telemetry.atmosphere.co2_one_hour_avg_mmhg = 0.0;
+    safe_telemetry.eva.eva_safe_return_margin_min = 200.0;
+
+    DerivedTelemetry low_o2 = safe_telemetry;
+    low_o2.atmosphere.inspired_oxygen_mmhg = 90.0;
+
+    model.updateCrewMember(safe, member, safe_telemetry, config, 60.0, 22.0);
+    model.updateCrewMember(hypoxic, member, low_o2, config, 60.0, 22.0);
+
+    REQUIRE(hypoxic.hypoxia_exposure_index > safe.hypoxia_exposure_index);
+    REQUIRE(hypoxic.heart_rate_bpm > safe.heart_rate_bpm);
+    REQUIRE(hypoxic.respiratory_rate_bpm > safe.respiratory_rate_bpm);
+    REQUIRE(hypoxic.spo2_percent < safe.spo2_percent);
+    REQUIRE(hypoxic.cognitive_performance_factor < safe.cognitive_performance_factor);
+    REQUIRE(hypoxic.physical_performance_factor < safe.physical_performance_factor);
+    REQUIRE(hasAlarm(hypoxic, CrewAlarmType::Hypoxia));
+    REQUIRE(hypoxic.health_status != CrewHealthStatus::Nominal);
+}
+
+TEST_CASE("crew: updateAllCrew differs by sensitivity and is reproducible", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeFullPhysiologyConfig();
+
+    CrewMemberConfig hardy = makePhysiologyMember();
+    hardy.crew_id = "crew_hardy";
+    hardy.hypoxia_sensitivity = 0.5;
+    hardy.fitness_factor = 2.0;
+
+    CrewMemberConfig sensitive = makePhysiologyMember();
+    sensitive.crew_id = "crew_sensitive";
+    sensitive.hypoxia_sensitivity = 2.0;
+    sensitive.fitness_factor = 1.0;
+
+    config.crew_roster = {hardy, sensitive};
+
+    SimulationState state{};
+    state.cabin_temperature_c = 22.0;
+    state.crew = {
+        makeBaselineCrewState(hardy),
+        makeBaselineCrewState(sensitive),
+    };
+
+    DerivedTelemetry telemetry{};
+    telemetry.atmosphere.inspired_oxygen_mmhg = 105.0;
+    telemetry.atmosphere.cabin_pressure_kpa = 80.0;
+    telemetry.atmosphere.co2_one_hour_avg_mmhg = 0.0;
+    telemetry.eva.eva_safe_return_margin_min = 200.0;
+
+    model.updateAllCrew(state, config, telemetry, 60.0);
+
+    REQUIRE(state.crew[0].crew_id == "crew_hardy");
+    REQUIRE(state.crew[1].crew_id == "crew_sensitive");
+    REQUIRE(state.crew[1].spo2_percent < state.crew[0].spo2_percent);
+    REQUIRE(state.crew[1].heart_rate_bpm > state.crew[0].heart_rate_bpm);
+    REQUIRE(state.crew[1].hypoxia_exposure_index > state.crew[0].hypoxia_exposure_index);
+
+    SimulationState again{};
+    again.cabin_temperature_c = 22.0;
+    again.crew = {
+        makeBaselineCrewState(hardy),
+        makeBaselineCrewState(sensitive),
+    };
+    model.updateAllCrew(again, config, telemetry, 60.0);
+
+    REQUIRE(again.crew[0].spo2_percent == Approx(state.crew[0].spo2_percent));
+    REQUIRE(again.crew[1].spo2_percent == Approx(state.crew[1].spo2_percent));
+    REQUIRE(again.crew[0].heart_rate_bpm == Approx(state.crew[0].heart_rate_bpm));
+    REQUIRE(again.crew[1].heart_rate_bpm == Approx(state.crew[1].heart_rate_bpm));
+    REQUIRE(again.crew[0].hypoxia_exposure_index ==
+            Approx(state.crew[0].hypoxia_exposure_index));
+    REQUIRE(again.crew[1].hypoxia_exposure_index ==
+            Approx(state.crew[1].hypoxia_exposure_index));
+}
+
+TEST_CASE("crew: updateAllCrew rejects roster/state mismatch", "[crew]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeFullPhysiologyConfig();
+    CrewMemberConfig member = makePhysiologyMember();
+    config.crew_roster = {member};
+
+    SimulationState state{};
+    state.cabin_temperature_c = 22.0;
+    state.crew = {};
+
+    DerivedTelemetry telemetry{};
+    REQUIRE_THROWS_AS(
+        model.updateAllCrew(state, config, telemetry, 60.0), std::runtime_error);
+}
