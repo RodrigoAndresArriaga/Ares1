@@ -8,16 +8,18 @@ add_executable(sim_core_tests
     test_actions.cpp
     test_validator.cpp
     test_simulation.cpp
+    test_json_io.cpp
     ${CMAKE_SOURCE_DIR}/src/ResourceModel.cpp
     ${CMAKE_SOURCE_DIR}/src/CrewPhysiologyModel.cpp
     ${CMAKE_SOURCE_DIR}/src/ActionExecutor.cpp
     ${CMAKE_SOURCE_DIR}/src/Validator.cpp
     ${CMAKE_SOURCE_DIR}/src/Simulation.cpp
     ${CMAKE_SOURCE_DIR}/src/MathUtils.cpp
+    ${CMAKE_SOURCE_DIR}/src/JsonIO.cpp
 )
 
 target_include_directories(sim_core_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
-target_link_libraries(sim_core_tests PRIVATE Catch2::Catch2WithMain)
+target_link_libraries(sim_core_tests PRIVATE Catch2::Catch2WithMain nlohmann_json::nlohmann_json)
 
 include(Catch)
 catch_discover_tests(sim_core_tests DISCOVERY_MODE PRE_TEST)

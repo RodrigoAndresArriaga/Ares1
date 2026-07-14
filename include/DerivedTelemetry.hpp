@@ -34,6 +34,7 @@ struct ThermalTelemetry{
     double tcs_commanded_rejection_w;
     double net_thermal_power_w;
     double thermal_margin_w;
+    double cabin_temperature_c;
     double temperature_margin_c;
 };
 

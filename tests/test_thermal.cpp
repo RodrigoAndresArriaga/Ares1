@@ -93,6 +93,7 @@ TEST_CASE("thermal: telemetry matches update heat balance fixture", "[thermal]")
     REQUIRE(telem.tcs_commanded_rejection_w == Approx(650.0));
     REQUIRE(telem.net_thermal_power_w == Approx(250.0));
     REQUIRE(telem.thermal_margin_w == Approx(-250.0));
+    REQUIRE(telem.cabin_temperature_c == Approx(22.0));
 }
 
 TEST_CASE("thermal: temperature margin negative only when critical limit crossed", "[thermal]") {

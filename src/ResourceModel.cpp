@@ -313,7 +313,8 @@ ThermalTelemetry ResourceModel::calculateThermalTelemetry(const SimulationState&
 // 2. net thermal power and remaining rejection margin
     out.net_thermal_power_w = heat_input_w - actual_rejection_w;
     out.thermal_margin_w = state.tcs_rejection_capacity_w - heat_input_w;
-// 3. temperature margin to nearest critical limit
+// 3. snapshot cabin temperature and margin to nearest critical limit
+    out.cabin_temperature_c = state.cabin_temperature_c;
     double margin_to_low = state.cabin_temperature_c - config.thermal.critical_low_c;
     double margin_to_high = config.thermal.critical_high_c - state.cabin_temperature_c;
     out.temperature_margin_c = margin_to_low;
