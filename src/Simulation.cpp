@@ -508,7 +508,7 @@ SimulationResult Simulation::runInternal(
         DerivedTelemetry pre_step = buildTelemetry(state, config, mission);
 
         // 4-5. physiology and habitat loads
-        crew_model_.updateAllCrew(state, config, pre_step, dt_seconds);
+        crew_model_.updateAllCrew(state, config, pre_step, dt_seconds, step_events);
         CrewHabitatLoads loads = crew_model_.aggregateCrewLoads(state.crew);
 
         // 6-11. resource updates

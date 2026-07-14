@@ -26,7 +26,7 @@ SimulationState makeThermalState() {
 
 }
 
-TEST_CASE("thermal: zero net heat leaves temperature unchanged", "[thermal]") {
+TEST_CASE("thermal: zero net heat leaves temperature unchanged", "[thermal][sec17]") {
     ResourceModel model;
     ScenarioConfig config = makeThermalConfig();
     SimulationState state = makeThermalState();

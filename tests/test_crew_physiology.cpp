@@ -417,7 +417,7 @@ TEST_CASE("crew: thermal severity cold hot and sensitivity", "[crew]") {
     REQUIRE(model.calculateThermalSeverity(telemetry, config, crew, 14.0) == Approx(1.0));
 }
 
-TEST_CASE("crew: exposure accumulates under stress and recovers when safe", "[crew]") {
+TEST_CASE("crew: exposure accumulates under stress and recovers when safe", "[crew][sec17]") {
     CrewPhysiologyModel model;
     VitalResponseConfig config{};
     config.hypoxia_accumulation_rate = 0.10;
@@ -1028,7 +1028,7 @@ TEST_CASE("crew: activity load and fatigue only reduce performance", "[crew]") {
     REQUIRE(fatigued.physical_performance_factor == Approx(0.8));
 }
 
-TEST_CASE("crew: performance factors clamp to 0-1", "[crew]") {
+TEST_CASE("crew: performance factors clamp to 0-1", "[crew][sec17]") {
     CrewPhysiologyModel model;
     VitalResponseConfig config{};
     config.cognitive_hypoxia_weight = 1.0;
@@ -1101,59 +1101,60 @@ TEST_CASE("crew: health alarms fire for each configured threshold", "[crew]") {
     VitalResponseConfig config = makeAlarmConfig();
     DerivedTelemetry telemetry{};
     telemetry.eva.eva_safe_return_margin_min = 100.0;
+    vector<TimelineEvent> events;
 
     CrewMemberState hypoxia = makeHealthyCrew();
     hypoxia.spo2_percent = 93.0;
-    model.updateHealthStatusAndAlarms(hypoxia, telemetry, config);
+    model.updateHealthStatusAndAlarms(hypoxia, telemetry, config, events, 0);
     REQUIRE(hasAlarm(hypoxia, CrewAlarmType::Hypoxia));
     REQUIRE(hypoxia.health_status == CrewHealthStatus::Impaired);
 
     CrewMemberState critical_o2 = makeHealthyCrew();
     critical_o2.spo2_percent = 85.0;
-    model.updateHealthStatusAndAlarms(critical_o2, telemetry, config);
+    model.updateHealthStatusAndAlarms(critical_o2, telemetry, config, events, 0);
     REQUIRE(hasAlarm(critical_o2, CrewAlarmType::Hypoxia));
     REQUIRE(critical_o2.health_status == CrewHealthStatus::Critical);
 
     CrewMemberState co2 = makeHealthyCrew();
     co2.co2_exposure_index = 1.2;
-    model.updateHealthStatusAndAlarms(co2, telemetry, config);
+    model.updateHealthStatusAndAlarms(co2, telemetry, config, events, 0);
     REQUIRE(hasAlarm(co2, CrewAlarmType::Hypercapnia));
     REQUIRE(co2.health_status == CrewHealthStatus::Critical);
 
     CrewMemberState hr = makeHealthyCrew();
     hr.heart_rate_bpm = 110.0;
-    model.updateHealthStatusAndAlarms(hr, telemetry, config);
+    model.updateHealthStatusAndAlarms(hr, telemetry, config, events, 0);
     REQUIRE(hasAlarm(hr, CrewAlarmType::Tachycardia));
     REQUIRE(hr.health_status == CrewHealthStatus::ElevatedStress);
 
     CrewMemberState rr = makeHealthyCrew();
     rr.respiratory_rate_bpm = 22.0;
-    model.updateHealthStatusAndAlarms(rr, telemetry, config);
+    model.updateHealthStatusAndAlarms(rr, telemetry, config, events, 0);
     REQUIRE(hasAlarm(rr, CrewAlarmType::Respiratory));
     REQUIRE(rr.health_status == CrewHealthStatus::ElevatedStress);
 
     CrewMemberState thermal = makeHealthyCrew();
     thermal.core_temperature_c = 38.5;
-    model.updateHealthStatusAndAlarms(thermal, telemetry, config);
+    model.updateHealthStatusAndAlarms(thermal, telemetry, config, events, 0);
     REQUIRE(hasAlarm(thermal, CrewAlarmType::Thermal));
     REQUIRE(thermal.health_status == CrewHealthStatus::Impaired);
 
     CrewMemberState fatigue = makeHealthyCrew();
     fatigue.fatigue_index = 0.7;
-    model.updateHealthStatusAndAlarms(fatigue, telemetry, config);
+    model.updateHealthStatusAndAlarms(fatigue, telemetry, config, events, 0);
     REQUIRE(hasAlarm(fatigue, CrewAlarmType::Fatigue));
     REQUIRE(fatigue.health_status == CrewHealthStatus::Impaired);
 
     CrewMemberState abort = makeHealthyCrew();
     abort.cognitive_performance_factor = 0.2;
-    model.updateHealthStatusAndAlarms(abort, telemetry, config);
+    model.updateHealthStatusAndAlarms(abort, telemetry, config, events, 0);
     REQUIRE(hasAlarm(abort, CrewAlarmType::Performance));
     REQUIRE(abort.health_status == CrewHealthStatus::Incapacitated);
 
     CrewMemberState eva = makeHealthyCrew();
     eva.eva_status = EVAStatus::Working;
     telemetry.eva.eva_safe_return_margin_min = -5.0;
-    model.updateHealthStatusAndAlarms(eva, telemetry, config);
+    model.updateHealthStatusAndAlarms(eva, telemetry, config, events, 0);
     REQUIRE(hasAlarm(eva, CrewAlarmType::EVAReturn));
     REQUIRE(eva.health_status == CrewHealthStatus::Critical);
 }
@@ -1163,18 +1164,19 @@ TEST_CASE("crew: clearing conditions removes non-latched alarms", "[crew]") {
     VitalResponseConfig config = makeAlarmConfig();
     DerivedTelemetry telemetry{};
     telemetry.eva.eva_safe_return_margin_min = 100.0;
+    vector<TimelineEvent> events;
 
     CrewMemberState crew = makeHealthyCrew();
     crew.spo2_percent = 92.0;
     crew.heart_rate_bpm = 105.0;
-    model.updateHealthStatusAndAlarms(crew, telemetry, config);
+    model.updateHealthStatusAndAlarms(crew, telemetry, config, events, 0);
     REQUIRE(hasAlarm(crew, CrewAlarmType::Hypoxia));
     REQUIRE(hasAlarm(crew, CrewAlarmType::Tachycardia));
     REQUIRE(crew.health_status == CrewHealthStatus::Impaired);
 
     crew.spo2_percent = 98.0;
     crew.heart_rate_bpm = 70.0;
-    model.updateHealthStatusAndAlarms(crew, telemetry, config);
+    model.updateHealthStatusAndAlarms(crew, telemetry, config, events, 0);
     REQUIRE(crew.active_alarms.empty());
     REQUIRE(crew.health_status == CrewHealthStatus::Nominal);
 }
@@ -1184,11 +1186,62 @@ TEST_CASE("crew: nominal when all vitals are inside thresholds", "[crew]") {
     VitalResponseConfig config = makeAlarmConfig();
     DerivedTelemetry telemetry{};
     telemetry.eva.eva_safe_return_margin_min = 100.0;
+    vector<TimelineEvent> events;
 
     CrewMemberState crew = makeHealthyCrew();
-    model.updateHealthStatusAndAlarms(crew, telemetry, config);
+    model.updateHealthStatusAndAlarms(crew, telemetry, config, events, 0);
     REQUIRE(crew.active_alarms.empty());
     REQUIRE(crew.health_status == CrewHealthStatus::Nominal);
+}
+
+TEST_CASE(
+    "crew: health transition events occur once per status change",
+    "[crew][sec17]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config = makeAlarmConfig();
+    DerivedTelemetry telemetry{};
+    telemetry.eva.eva_safe_return_margin_min = 100.0;
+    vector<TimelineEvent> events;
+
+    CrewMemberState crew = makeHealthyCrew();
+    crew.crew_id = "crew_01";
+
+    // Nominal -> ElevatedStress
+    crew.heart_rate_bpm = 110.0;
+    model.updateHealthStatusAndAlarms(crew, telemetry, config, events, 1);
+    REQUIRE(crew.health_status == CrewHealthStatus::ElevatedStress);
+    REQUIRE(events.size() == 1);
+    REQUIRE(events[0].event_type == "health_transition");
+    REQUIRE(events[0].time_min == 1);
+
+    // hold ElevatedStress: no new event
+    model.updateHealthStatusAndAlarms(crew, telemetry, config, events, 2);
+    REQUIRE(crew.health_status == CrewHealthStatus::ElevatedStress);
+    REQUIRE(events.size() == 1);
+
+    // ElevatedStress -> Impaired
+    crew.spo2_percent = 92.0;
+    model.updateHealthStatusAndAlarms(crew, telemetry, config, events, 3);
+    REQUIRE(crew.health_status == CrewHealthStatus::Impaired);
+    REQUIRE(events.size() == 2);
+    REQUIRE(events[1].event_type == "health_transition");
+    REQUIRE(events[1].time_min == 3);
+
+    // hold Impaired
+    model.updateHealthStatusAndAlarms(crew, telemetry, config, events, 4);
+    REQUIRE(events.size() == 2);
+
+    // Impaired -> Nominal
+    crew.spo2_percent = 98.0;
+    crew.heart_rate_bpm = 70.0;
+    model.updateHealthStatusAndAlarms(crew, telemetry, config, events, 5);
+    REQUIRE(crew.health_status == CrewHealthStatus::Nominal);
+    REQUIRE(events.size() == 3);
+    REQUIRE(events[2].event_type == "health_transition");
+
+    // hold Nominal
+    model.updateHealthStatusAndAlarms(crew, telemetry, config, events, 6);
+    REQUIRE(events.size() == 3);
 }
 
 namespace {
@@ -1416,7 +1469,184 @@ CrewMemberState makeBaselineCrewState(const CrewMemberConfig& member) {
 
 }
 
-TEST_CASE("crew: safe-step updateCrewMember stays near baseline", "[crew]") {
+TEST_CASE(
+    "crew: lower inspired O2 never improves hypoxia severity or SpO2",
+    "[crew][sec17]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeFullPhysiologyConfig();
+    CrewMemberConfig member = makePhysiologyMember();
+    config.crew_roster = {member};
+
+    const double inspired_levels[] = {150.0, 120.0, 105.0, 90.0, 80.0};
+    double prev_severity = -1.0;
+    double prev_spo2 = 1e9;
+
+    for (double inspired : inspired_levels) {
+        double severity = model.calculateHypoxiaSeverity(
+            makeEnvTelemetry(inspired, 80.0, 0.0), config, member);
+        REQUIRE(severity >= prev_severity);
+        prev_severity = severity;
+
+        CrewMemberState crew = makeBaselineCrewState(member);
+        DerivedTelemetry telemetry = makeEnvTelemetry(inspired, 80.0, 0.0);
+        telemetry.eva.eva_safe_return_margin_min = 200.0;
+        vector<TimelineEvent> events;
+        model.updateCrewMember(
+            crew, member, telemetry, config, 60.0, 22.0, events, 0);
+        REQUIRE(crew.spo2_percent <= prev_spo2);
+        prev_spo2 = crew.spo2_percent;
+    }
+}
+
+TEST_CASE(
+    "crew: higher CO2 never reduces CO2 severity",
+    "[crew][sec17]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeSeverityConfig();
+    CrewMemberConfig crew = makeSensitiveCrew(1.0, 1.0, 1.0);
+
+    const double co2_levels[] = {0.0, 2.0, 4.0, 6.0, 8.0, 10.0};
+    double prev = -1.0;
+    for (double co2 : co2_levels) {
+        double severity = model.calculateCo2Severity(
+            makeEnvTelemetry(150.0, 80.0, co2), config, crew);
+        REQUIRE(severity >= prev);
+        prev = severity;
+    }
+}
+
+TEST_CASE(
+    "crew: higher activity increases metabolic O2 CO2 and heat",
+    "[crew][sec17]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config{};
+
+    ActivityMetabolicProfile sleep{};
+    sleep.activity = CrewActivity::Sleep;
+    sleep.oxygen_g_min = 0.35;
+    sleep.co2_g_min = 0.40;
+    sleep.heat_w = 75.0;
+    sleep.activity_load = 0.1;
+
+    ActivityMetabolicProfile nominal{};
+    nominal.activity = CrewActivity::NominalWork;
+    nominal.oxygen_g_min = 0.90;
+    nominal.co2_g_min = 1.00;
+    nominal.heat_w = 150.0;
+    nominal.activity_load = 0.5;
+
+    ActivityMetabolicProfile high{};
+    high.activity = CrewActivity::HighWorkload;
+    high.oxygen_g_min = 1.40;
+    high.co2_g_min = 1.55;
+    high.heat_w = 220.0;
+    high.activity_load = 0.8;
+
+    config.activity_profiles = {sleep, nominal, high};
+
+    CrewMemberConfig member = makeSensitiveCrew(1.0, 1.0, 1.0);
+    CrewMemberState state{};
+    state.physical_performance_factor = 1.0;
+    state.oxygen_rationing_active = false;
+
+    model.updateMetabolicOutputs(state, member, sleep, config);
+    const double o2_sleep = state.oxygen_consumption_g_min;
+    const double co2_sleep = state.co2_production_g_min;
+    const double heat_sleep = state.heat_output_w;
+
+    model.updateMetabolicOutputs(state, member, nominal, config);
+    const double o2_nominal = state.oxygen_consumption_g_min;
+    const double co2_nominal = state.co2_production_g_min;
+    const double heat_nominal = state.heat_output_w;
+
+    model.updateMetabolicOutputs(state, member, high, config);
+    REQUIRE(o2_sleep < o2_nominal);
+    REQUIRE(o2_nominal < state.oxygen_consumption_g_min);
+    REQUIRE(co2_sleep < co2_nominal);
+    REQUIRE(co2_nominal < state.co2_production_g_min);
+    REQUIRE(heat_sleep < heat_nominal);
+    REQUIRE(heat_nominal < state.heat_output_w);
+}
+
+TEST_CASE(
+    "crew: performance declines monotonically with graded hypoxia stress",
+    "[crew][sec17]") {
+    CrewPhysiologyModel model;
+    VitalResponseConfig config{};
+    config.cognitive_hypoxia_weight = 0.25;
+    config.cognitive_co2_weight = 0.0;
+    config.cognitive_thermal_weight = 0.0;
+    config.cognitive_fatigue_weight = 0.0;
+    config.physical_hypoxia_weight = 0.20;
+    config.physical_co2_weight = 0.0;
+    config.physical_thermal_weight = 0.0;
+    config.physical_fatigue_weight = 0.0;
+
+    ActivityMetabolicProfile rest = makeLoadProfile(CrewActivity::Resting, 0.0);
+    const double exposures[] = {0.0, 0.25, 0.5, 0.75, 1.0};
+    double prev_cog = 1.1;
+    double prev_phys = 1.1;
+
+    for (double exposure : exposures) {
+        CrewMemberState crew{};
+        crew.hypoxia_exposure_index = exposure;
+        crew.co2_exposure_index = 0.0;
+        crew.thermal_exposure_index = 0.0;
+        crew.fatigue_index = 0.0;
+        model.updatePerformance(crew, rest, config);
+
+        REQUIRE(crew.cognitive_performance_factor >= 0.0);
+        REQUIRE(crew.cognitive_performance_factor <= 1.0);
+        REQUIRE(crew.physical_performance_factor >= 0.0);
+        REQUIRE(crew.physical_performance_factor <= 1.0);
+        REQUIRE(crew.cognitive_performance_factor <= prev_cog);
+        REQUIRE(crew.physical_performance_factor <= prev_phys);
+        prev_cog = crew.cognitive_performance_factor;
+        prev_phys = crew.physical_performance_factor;
+    }
+}
+
+TEST_CASE(
+    "crew: same input produces identical vital telemetry (deterministic, no RNG seed)",
+    "[crew][sec17]") {
+    CrewPhysiologyModel model;
+    ScenarioConfig config = makeFullPhysiologyConfig();
+    CrewMemberConfig member = makePhysiologyMember();
+    config.crew_roster = {member};
+
+    DerivedTelemetry telemetry{};
+    telemetry.atmosphere.inspired_oxygen_mmhg = 105.0;
+    telemetry.atmosphere.cabin_pressure_kpa = 80.0;
+    telemetry.atmosphere.co2_one_hour_avg_mmhg = 2.0;
+    telemetry.eva.eva_safe_return_margin_min = 200.0;
+
+    SimulationState a{};
+    a.cabin_temperature_c = 22.0;
+    a.crew = {makeBaselineCrewState(member)};
+    SimulationState b = a;
+
+    vector<TimelineEvent> events_a;
+    vector<TimelineEvent> events_b;
+    model.updateAllCrew(a, config, telemetry, 60.0, events_a);
+    model.updateAllCrew(b, config, telemetry, 60.0, events_b);
+
+    auto vitals_a = model.buildCrewVitalsTelemetry(a, config);
+    auto vitals_b = model.buildCrewVitalsTelemetry(b, config);
+    REQUIRE(vitals_a.size() == 1);
+    REQUIRE(vitals_b.size() == 1);
+    REQUIRE(vitals_a[0].heart_rate_bpm == Approx(vitals_b[0].heart_rate_bpm));
+    REQUIRE(vitals_a[0].respiratory_rate_bpm ==
+            Approx(vitals_b[0].respiratory_rate_bpm));
+    REQUIRE(vitals_a[0].spo2_percent == Approx(vitals_b[0].spo2_percent));
+    REQUIRE(vitals_a[0].core_temperature_c ==
+            Approx(vitals_b[0].core_temperature_c));
+    REQUIRE(vitals_a[0].cognitive_performance_percent ==
+            Approx(vitals_b[0].cognitive_performance_percent));
+    REQUIRE(vitals_a[0].physical_performance_percent ==
+            Approx(vitals_b[0].physical_performance_percent));
+}
+
+TEST_CASE("crew: safe-step updateCrewMember stays near baseline", "[crew][sec17]") {
     CrewPhysiologyModel model;
     ScenarioConfig config = makeFullPhysiologyConfig();
     CrewMemberConfig member = makePhysiologyMember();
@@ -1428,7 +1658,8 @@ TEST_CASE("crew: safe-step updateCrewMember stays near baseline", "[crew]") {
     telemetry.atmosphere.co2_one_hour_avg_mmhg = 0.0;
     telemetry.eva.eva_safe_return_margin_min = 200.0;
 
-    model.updateCrewMember(crew, member, telemetry, config, 60.0, 22.0);
+    vector<TimelineEvent> events;
+    model.updateCrewMember(crew, member, telemetry, config, 60.0, 22.0, events, 0);
 
     REQUIRE(crew.heart_rate_bpm == Approx(70.0));
     REQUIRE(crew.respiratory_rate_bpm == Approx(14.0));
@@ -1462,8 +1693,9 @@ TEST_CASE("crew: low-O2 updateCrewMember moves fields in expected directions", "
     DerivedTelemetry low_o2 = safe_telemetry;
     low_o2.atmosphere.inspired_oxygen_mmhg = 90.0;
 
-    model.updateCrewMember(safe, member, safe_telemetry, config, 60.0, 22.0);
-    model.updateCrewMember(hypoxic, member, low_o2, config, 60.0, 22.0);
+    vector<TimelineEvent> events;
+    model.updateCrewMember(safe, member, safe_telemetry, config, 60.0, 22.0, events, 0);
+    model.updateCrewMember(hypoxic, member, low_o2, config, 60.0, 22.0, events, 0);
 
     REQUIRE(hypoxic.hypoxia_exposure_index > safe.hypoxia_exposure_index);
     REQUIRE(hypoxic.heart_rate_bpm > safe.heart_rate_bpm);
@@ -1504,7 +1736,8 @@ TEST_CASE("crew: updateAllCrew differs by sensitivity and is reproducible", "[cr
     telemetry.atmosphere.co2_one_hour_avg_mmhg = 0.0;
     telemetry.eva.eva_safe_return_margin_min = 200.0;
 
-    model.updateAllCrew(state, config, telemetry, 60.0);
+    vector<TimelineEvent> events;
+    model.updateAllCrew(state, config, telemetry, 60.0, events);
 
     REQUIRE(state.crew[0].crew_id == "crew_hardy");
     REQUIRE(state.crew[1].crew_id == "crew_sensitive");
@@ -1518,7 +1751,8 @@ TEST_CASE("crew: updateAllCrew differs by sensitivity and is reproducible", "[cr
         makeBaselineCrewState(hardy),
         makeBaselineCrewState(sensitive),
     };
-    model.updateAllCrew(again, config, telemetry, 60.0);
+    vector<TimelineEvent> events2;
+    model.updateAllCrew(again, config, telemetry, 60.0, events2);
 
     REQUIRE(again.crew[0].spo2_percent == Approx(state.crew[0].spo2_percent));
     REQUIRE(again.crew[1].spo2_percent == Approx(state.crew[1].spo2_percent));
@@ -1541,8 +1775,9 @@ TEST_CASE("crew: updateAllCrew rejects roster/state mismatch", "[crew]") {
     state.crew = {};
 
     DerivedTelemetry telemetry{};
+    vector<TimelineEvent> events;
     REQUIRE_THROWS_AS(
-        model.updateAllCrew(state, config, telemetry, 60.0), std::runtime_error);
+        model.updateAllCrew(state, config, telemetry, 60.0, events), std::runtime_error);
 }
 
 TEST_CASE("crew: aggregateCrewLoads sums habitat crew and excludes active EVA", "[crew]") {
@@ -1593,8 +1828,9 @@ TEST_CASE("crew: high-CO2 updateCrewMember moves fields in expected directions",
     DerivedTelemetry co2_telemetry = safe_telemetry;
     co2_telemetry.atmosphere.co2_one_hour_avg_mmhg = 8.0;
 
-    model.updateCrewMember(safe, member, safe_telemetry, config, 60.0, 22.0);
-    model.updateCrewMember(high_co2, member, co2_telemetry, config, 60.0, 22.0);
+    vector<TimelineEvent> events;
+    model.updateCrewMember(safe, member, safe_telemetry, config, 60.0, 22.0, events, 0);
+    model.updateCrewMember(high_co2, member, co2_telemetry, config, 60.0, 22.0, events, 0);
 
     REQUIRE(high_co2.co2_exposure_index > safe.co2_exposure_index);
     REQUIRE(high_co2.heart_rate_bpm > safe.heart_rate_bpm);
@@ -1620,8 +1856,9 @@ TEST_CASE("crew: thermal-stress updateCrewMember moves fields in expected direct
     telemetry.atmosphere.co2_one_hour_avg_mmhg = 0.0;
     telemetry.eva.eva_safe_return_margin_min = 200.0;
 
-    model.updateCrewMember(safe, member, telemetry, config, 60.0, 22.0);
-    model.updateCrewMember(hot, member, telemetry, config, 60.0, 40.0);
+    vector<TimelineEvent> events;
+    model.updateCrewMember(safe, member, telemetry, config, 60.0, 22.0, events, 0);
+    model.updateCrewMember(hot, member, telemetry, config, 60.0, 40.0, events, 0);
 
     REQUIRE(hot.thermal_exposure_index > safe.thermal_exposure_index);
     REQUIRE(hot.heart_rate_bpm > safe.heart_rate_bpm);
@@ -1689,7 +1926,8 @@ TEST_CASE("crew: habitat connection records one atomic TelemetrySample", "[crew]
         resources.calculateDerivedTelemetry(state, config, {}, mission);
 
     // 2. physiology update once from pre-step environment
-    physiology.updateAllCrew(state, config, pre_step, dt_seconds);
+    vector<TimelineEvent> step_events;
+    physiology.updateAllCrew(state, config, pre_step, dt_seconds, step_events);
 
     // 3. aggregate habitat-fed metabolic loads
     CrewHabitatLoads loads = physiology.aggregateCrewLoads(state.crew);

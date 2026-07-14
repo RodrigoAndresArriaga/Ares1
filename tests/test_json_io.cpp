@@ -302,7 +302,7 @@ TEST_CASE("jsonio: rejects unknown enum and action", "[jsonio]"){
     REQUIRE(error.find("unknown action type") != string::npos);
 }
 
-TEST_CASE("jsonio: serializes simulation result with section 15 habitat fields", "[jsonio]"){
+TEST_CASE("jsonio: serializes simulation result with section 15 habitat fields", "[jsonio][sec17]"){
     ScenarioConfig config{};
     string error;
     REQUIRE(loadScenarioFromString(makeValidScenarioJson().dump(), config, error));

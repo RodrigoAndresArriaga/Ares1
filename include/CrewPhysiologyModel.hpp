@@ -6,6 +6,7 @@
 #include "DerivedTelemetry.hpp"
 #include "ScenarioConfig.hpp"
 #include "SimulationState.hpp"
+#include "TelemetrySample.hpp"
 
 using namespace std;
 
@@ -60,15 +61,18 @@ public:
         const VitalResponseConfig& config) const;
     void updateHealthStatusAndAlarms(
         CrewMemberState& crew, const DerivedTelemetry& telemetry,
-        const VitalResponseConfig& config) const;
+        const VitalResponseConfig& config, vector<TimelineEvent>& events,
+        int time_min) const;
 
     void updateCrewMember(
         CrewMemberState& crew, const CrewMemberConfig& member,
         const DerivedTelemetry& pre_step_telemetry, const ScenarioConfig& config,
-        double dt_seconds, double cabin_temperature_c);
+        double dt_seconds, double cabin_temperature_c,
+        vector<TimelineEvent>& events, int time_min);
     void updateAllCrew(
         SimulationState& state, const ScenarioConfig& config,
-        const DerivedTelemetry& pre_step_telemetry, double dt_seconds);
+        const DerivedTelemetry& pre_step_telemetry, double dt_seconds,
+        vector<TimelineEvent>& events);
 
     // sum O2/CO2/heat for habitat-fed crew only (exclude active EVA suit)
     CrewHabitatLoads aggregateCrewLoads(const vector<CrewMemberState>& crew) const;

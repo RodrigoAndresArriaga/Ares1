@@ -28,7 +28,7 @@ SimulationState makeSolarState() {
 
 }
 
-TEST_CASE("power: ninety degree incidence produces zero solar generation", "[power][solar]") {
+TEST_CASE("power: ninety degree incidence produces zero solar generation", "[power][solar][sec17]") {
     ResourceModel model;
     ScenarioConfig config = makeSolarConfig();
     SimulationState state = makeSolarState();
@@ -48,7 +48,7 @@ TEST_CASE("power: incidence greater than 90 degrees produces zero solar generati
     REQUIRE(model.calculateHealthySolarGenerationKw(state, config) == Approx(0.0));
 }
 
-TEST_CASE("power: solar fault factor scales actual generation relative to healthy", "[power][solar]") {
+TEST_CASE("power: solar fault factor scales actual generation relative to healthy", "[power][solar][sec17]") {
     ResourceModel model;
     ScenarioConfig config = makeSolarConfig();
     SimulationState state = makeSolarState();
@@ -84,7 +84,7 @@ SimulationState makePowerState() {
 
 }
 
-TEST_CASE("power: one hour at 1 kW deficit applies discharge efficiency", "[power][battery]") {
+TEST_CASE("power: one hour at 1 kW deficit applies discharge efficiency", "[power][battery][sec17]") {
     ResourceModel model;
     ScenarioConfig config = makePowerConfig();
     SimulationState state = makePowerState();
@@ -128,7 +128,7 @@ TEST_CASE("power: battery energy cannot exceed capacity", "[power][battery]") {
     REQUIRE(state.battery_energy_kwh == Approx(config.power.battery_capacity_kwh));
 }
 
-TEST_CASE("power: SOC is energy divided by capacity", "[power][telemetry]") {
+TEST_CASE("power: SOC is energy divided by capacity", "[power][telemetry][sec17]") {
     ResourceModel model;
     ScenarioConfig config = makePowerConfig();
     config.power.battery_reserve_percent = 20.0;

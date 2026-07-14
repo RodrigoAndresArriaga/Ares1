@@ -164,7 +164,7 @@ TEST_CASE("actions: TCS shed reduces rejection capacity", "[actions][power][ther
     REQUIRE(state.active_actions[0].status == ActionExecutionStatus::Complete);
 }
 
-TEST_CASE("actions: isolate_module fails when crew trapped", "[actions][isolate]"){
+TEST_CASE("actions: isolate_module fails when crew trapped", "[actions][isolate][sec17]"){
     ActionExecutor exec;
     ScenarioConfig config = makeActionConfig();
     SimulationState state = makeActionState(config);
@@ -183,7 +183,7 @@ TEST_CASE("actions: isolate_module fails when crew trapped", "[actions][isolate]
     REQUIRE(state.habitable_volume_m3 == Approx(100.0));
 }
 
-TEST_CASE("actions: isolate_module reduces volume and multiplies leak", "[actions][isolate]"){
+TEST_CASE("actions: isolate_module reduces volume and multiplies leak", "[actions][isolate][sec17]"){
     ActionExecutor exec;
     ScenarioConfig config = makeActionConfig();
     SimulationState state = makeActionState(config);
@@ -292,7 +292,7 @@ TEST_CASE("actions: repair blocked while rover reserved", "[actions][rover][repa
     REQUIRE(state.crew[0].eva_status == EVAStatus::Idle);
 }
 
-TEST_CASE("actions: unqualified crew cannot start repair", "[actions][repair]"){
+TEST_CASE("actions: unqualified crew cannot start repair", "[actions][repair][sec17]"){
     ActionExecutor exec;
     ScenarioConfig config = makeActionConfig();
     SimulationState state = makeActionState(config);
@@ -308,7 +308,7 @@ TEST_CASE("actions: unqualified crew cannot start repair", "[actions][repair]"){
     REQUIRE(state.crew[1].eva_status == EVAStatus::Idle);
 }
 
-TEST_CASE("actions: packet outside window fails", "[actions][comms]"){
+TEST_CASE("actions: packet outside window fails", "[actions][comms][sec17]"){
     ActionExecutor exec;
     ScenarioConfig config = makeActionConfig();
     SimulationState state = makeActionState(config);
@@ -352,7 +352,7 @@ TEST_CASE("actions: packet in window completes after duration", "[actions][comms
     REQUIRE(state.communications_load_kw == Approx(config.power.communications_load_kw));
 }
 
-TEST_CASE("actions: repair EVA advances phases and restores solar only on complete", "[actions][repair][eva]"){
+TEST_CASE("actions: repair EVA advances phases and restores solar only on complete", "[actions][repair][eva][sec17]"){
     ActionExecutor exec;
     ResourceModel resources;
     ScenarioConfig config = makeActionConfig();
@@ -410,7 +410,7 @@ TEST_CASE("actions: repair EVA advances phases and restores solar only on comple
     REQUIRE(state.active_actions[0].status == ActionExecutionStatus::Complete);
 }
 
-TEST_CASE("actions: repair progress slower with lower physical performance", "[actions][repair]"){
+TEST_CASE("actions: repair progress slower with lower physical performance", "[actions][repair][sec17]"){
     ResourceModel resources;
     ScenarioConfig config = makeActionConfig();
     SimulationState state = makeActionState(config);
@@ -436,7 +436,7 @@ TEST_CASE("actions: repair progress slower with lower physical performance", "[a
     REQUIRE(state.solar_repair_progress < state_full.solar_repair_progress);
 }
 
-TEST_CASE("actions: no repair progress during preparation", "[actions][repair][eva]"){
+TEST_CASE("actions: no repair progress during preparation", "[actions][repair][eva][sec17]"){
     ResourceModel resources;
     ScenarioConfig config = makeActionConfig();
     SimulationState state = makeActionState(config);

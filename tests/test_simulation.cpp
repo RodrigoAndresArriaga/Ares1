@@ -272,7 +272,7 @@ TEST_CASE("simulation: baseline fails from hard atmosphere constraint", "[simula
     REQUIRE_FALSE(result.telemetry_history.empty());
 }
 
-TEST_CASE("simulation: valid plan can still fail dynamically", "[simulation][failure]"){
+TEST_CASE("simulation: valid plan can still fail dynamically", "[simulation][failure][sec17]"){
     Simulation sim;
     ScenarioConfig config = makeSimConfig();
     config.fault.total_gas_leak_kg_hr = 80.0;
@@ -294,7 +294,7 @@ TEST_CASE("simulation: valid plan can still fail dynamically", "[simulation][fai
     REQUIRE_FALSE(result.failure_reasons.empty());
 }
 
-TEST_CASE("simulation: stabilization requires full hold time", "[simulation][stabilized]"){
+TEST_CASE("simulation: stabilization requires full hold time", "[simulation][stabilized][sec17]"){
     Simulation sim;
     ScenarioConfig config = makeSimConfig();
     config.stabilization_hold_min = 5;
@@ -342,7 +342,7 @@ TEST_CASE("simulation: hold timer resets when conditions break", "[simulation][s
     REQUIRE(mission.stabilization_elapsed_min == Approx(0.0));
 }
 
-TEST_CASE("simulation: all crew incapacitated is mission failure", "[simulation][failure][crew]"){
+TEST_CASE("simulation: all crew incapacitated is mission failure", "[simulation][failure][crew][sec17]"){
     Simulation sim;
     ScenarioConfig config = makeSimConfig();
     SimulationState state = makeSafeState(config);
@@ -393,7 +393,7 @@ TEST_CASE("simulation: EVA incapacitation is mission failure", "[simulation][fai
     REQUIRE(found);
 }
 
-TEST_CASE("simulation: safe baseline can stabilize", "[simulation][stabilized]"){
+TEST_CASE("simulation: safe baseline can stabilize", "[simulation][stabilized][sec17]"){
     Simulation sim;
     ScenarioConfig config = makeSimConfig();
     config.stabilization_hold_min = 3;
@@ -407,6 +407,39 @@ TEST_CASE("simulation: safe baseline can stabilize", "[simulation][stabilized]")
     REQUIRE(result.valid_plan);
     REQUIRE(result.metrics.time_to_stabilization_hr >= 0.0);
     REQUIRE(result.failure_reasons.empty());
+}
+
+TEST_CASE(
+    "simulation: baseline and empty plan share physics and initial state",
+    "[simulation][sec17]"){
+    Simulation sim;
+    ScenarioConfig config = makeSimConfig();
+    config.stabilization_hold_min = 3;
+    config.maximum_duration_min = 20;
+    config.fault.total_gas_leak_kg_hr = 0.0;
+    config.fault.solar_fault_factor = 1.0;
+    config.fault.stabilized_leak_kg_hr = 0.1;
+
+    SimulationResult baseline = sim.runBaseline(config);
+
+    Plan empty{};
+    empty.plan_id = "empty";
+    SimulationResult planned = sim.runWithPlan(config, empty);
+
+    REQUIRE(baseline.outcome == planned.outcome);
+    REQUIRE(baseline.valid_plan);
+    REQUIRE(planned.valid_plan);
+    REQUIRE(baseline.failure_reasons == planned.failure_reasons);
+    REQUIRE_FALSE(baseline.telemetry_history.empty());
+    REQUIRE(baseline.telemetry_history.size() == planned.telemetry_history.size());
+
+    const auto& b0 = baseline.telemetry_history.front().telemetry;
+    const auto& p0 = planned.telemetry_history.front().telemetry;
+    REQUIRE(b0.atmosphere.cabin_pressure_kpa == Approx(p0.atmosphere.cabin_pressure_kpa));
+    REQUIRE(b0.atmosphere.inspired_oxygen_mmhg ==
+            Approx(p0.atmosphere.inspired_oxygen_mmhg));
+    REQUIRE(b0.power.battery_soc_percent == Approx(p0.power.battery_soc_percent));
+    REQUIRE(b0.thermal.cabin_temperature_c == Approx(p0.thermal.cabin_temperature_c));
 }
 
 TEST_CASE("actions: impaired crew cannot start EVA repair", "[actions][crew]"){

@@ -189,7 +189,7 @@ TEST_CASE("validator: valid scenario and empty plan pass", "[validator]"){
     REQUIRE(plan_result.valid);
 }
 
-TEST_CASE("validator: duplicate crew ids are rejected", "[validator]"){
+TEST_CASE("validator: duplicate crew ids are rejected", "[validator][sec17]"){
     Validator validator;
     ScenarioConfig config = makeValidConfig();
     config.crew_roster.push_back(makeCrew("crew_01", true));
@@ -215,7 +215,7 @@ TEST_CASE("validator: incoherent atmosphere thresholds are rejected", "[validato
     REQUIRE_FALSE(result.valid);
 }
 
-TEST_CASE("validator: unknown action is rejected", "[validator]"){
+TEST_CASE("validator: unknown action is rejected", "[validator][sec17]"){
     Validator validator;
     ScenarioConfig config = makeValidConfig();
     Plan plan{};
@@ -231,7 +231,7 @@ TEST_CASE("validator: unknown action is rejected", "[validator]"){
     REQUIRE(result.errors[0].code == "unknown_action");
 }
 
-TEST_CASE("validator: unqualified EVA crew is rejected", "[validator]"){
+TEST_CASE("validator: unqualified EVA crew is rejected", "[validator][sec17]"){
     Validator validator;
     ScenarioConfig config = makeValidConfig();
     Plan plan{};
@@ -254,7 +254,7 @@ TEST_CASE("validator: unqualified EVA crew is rejected", "[validator]"){
     REQUIRE(found);
 }
 
-TEST_CASE("validator: packet outside window is rejected", "[validator]"){
+TEST_CASE("validator: packet outside window is rejected", "[validator][sec17]"){
     Validator validator;
     ScenarioConfig config = makeValidConfig();
     Plan plan{};

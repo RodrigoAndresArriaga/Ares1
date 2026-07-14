@@ -4,6 +4,33 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <string>
+
+namespace {
+
+string healthStatusLabel(CrewHealthStatus status) {
+    switch (status) {
+        case CrewHealthStatus::Nominal: return "NOMINAL";
+        case CrewHealthStatus::ElevatedStress: return "ELEVATED_STRESS";
+        case CrewHealthStatus::Impaired: return "IMPAIRED";
+        case CrewHealthStatus::Critical: return "CRITICAL";
+        case CrewHealthStatus::Incapacitated: return "INCAPACITATED";
+    }
+    return "UNKNOWN";
+}
+
+ConstraintSeverity severityForHealth(CrewHealthStatus status) {
+    switch (status) {
+        case CrewHealthStatus::Nominal: return ConstraintSeverity::Info;
+        case CrewHealthStatus::ElevatedStress: return ConstraintSeverity::Warning;
+        case CrewHealthStatus::Impaired: return ConstraintSeverity::Warning;
+        case CrewHealthStatus::Critical: return ConstraintSeverity::Critical;
+        case CrewHealthStatus::Incapacitated: return ConstraintSeverity::Failure;
+    }
+    return ConstraintSeverity::Info;
+}
+
+}
 
 vector<CrewMemberState> CrewPhysiologyModel::initializeCrewStates(
     const ScenarioConfig& config) const {
@@ -395,7 +422,8 @@ void CrewPhysiologyModel::updatePerformance(
 // apply transparent health/alarm thresholds; rebuild alarms each step
 void CrewPhysiologyModel::updateHealthStatusAndAlarms(
     CrewMemberState& crew, const DerivedTelemetry& telemetry,
-    const VitalResponseConfig& config) const {
+    const VitalResponseConfig& config, vector<TimelineEvent>& events,
+    int time_min) const {
     crew.active_alarms.clear();
 
     if (crew.spo2_percent <= config.spo2_warning_percent ||
@@ -438,27 +466,38 @@ void CrewPhysiologyModel::updateHealthStatusAndAlarms(
             ? crew.cognitive_performance_factor
             : crew.physical_performance_factor;
 
+    const CrewHealthStatus previous = crew.health_status;
+    CrewHealthStatus next = CrewHealthStatus::Nominal;
     if (crew.actvity == CrewActivity::Incapacitated ||
         min_performance <= config.performance_abort_fraction) {
-        crew.health_status = CrewHealthStatus::Incapacitated;
+        next = CrewHealthStatus::Incapacitated;
     } else if (crew.spo2_percent <= config.spo2_critical_percent ||
                crew.co2_exposure_index >= 1.0 ||
                (active_eva && telemetry.eva.eva_safe_return_margin_min < 0.0)) {
-        crew.health_status = CrewHealthStatus::Critical;
+        next = CrewHealthStatus::Critical;
     } else if (crew.spo2_percent <= config.spo2_warning_percent ||
                crew.fatigue_index >= config.fatigue_warning_fraction ||
                crew.core_temperature_c < config.core_temp_low_c ||
                crew.core_temperature_c > config.core_temp_high_c) {
-        crew.health_status = CrewHealthStatus::Impaired;
+        next = CrewHealthStatus::Impaired;
     } else if (crew.heart_rate_bpm >= config.heart_rate_warning_bpm ||
                crew.respiratory_rate_bpm >= config.respiratory_rate_warning_bpm ||
                crew.hypoxia_exposure_index > 0.0 ||
                crew.co2_exposure_index > 0.0 ||
                crew.thermal_exposure_index > 0.0 ||
                !crew.active_alarms.empty()) {
-        crew.health_status = CrewHealthStatus::ElevatedStress;
-    } else {
-        crew.health_status = CrewHealthStatus::Nominal;
+        next = CrewHealthStatus::ElevatedStress;
+    }
+
+    crew.health_status = next;
+    if (previous != next) {
+        TimelineEvent ev{};
+        ev.time_min = time_min;
+        ev.event_type = "health_transition";
+        ev.message = crew.crew_id + " " + healthStatusLabel(previous) + " -> " +
+            healthStatusLabel(next);
+        ev.severity = severityForHealth(next);
+        events.push_back(ev);
     }
 }
 
@@ -466,7 +505,8 @@ void CrewPhysiologyModel::updateHealthStatusAndAlarms(
 void CrewPhysiologyModel::updateCrewMember(
     CrewMemberState& crew, const CrewMemberConfig& member,
     const DerivedTelemetry& pre_step_telemetry, const ScenarioConfig& config,
-    double dt_seconds, double cabin_temperature_c) {
+    double dt_seconds, double cabin_temperature_c,
+    vector<TimelineEvent>& events, int time_min) {
     double dt_minutes = dt_seconds / ares::constants::SECONDS_PER_MINUTE;
 
     const ActivityMetabolicProfile& profile =
@@ -493,7 +533,8 @@ void CrewPhysiologyModel::updateCrewMember(
         pressure_severity, thermal_severity, config.vital_response, dt_minutes,
         cabin_temperature_c);
     updatePerformance(crew, profile, config.vital_response);
-    updateHealthStatusAndAlarms(crew, pre_step_telemetry, config.vital_response);
+    updateHealthStatusAndAlarms(
+        crew, pre_step_telemetry, config.vital_response, events, time_min);
 }
 
 // sum habitat O2/CO2/heat; active EVA suit phases draw from suit, not cabin
@@ -524,7 +565,8 @@ CrewHabitatLoads CrewPhysiologyModel::aggregateCrewLoads(
 // one deterministic physiology step for the full roster
 void CrewPhysiologyModel::updateAllCrew(
     SimulationState& state, const ScenarioConfig& config,
-    const DerivedTelemetry& pre_step_telemetry, double dt_seconds) {
+    const DerivedTelemetry& pre_step_telemetry, double dt_seconds,
+    vector<TimelineEvent>& events) {
     if (state.crew.size() != config.crew_roster.size()) {
         throw std::runtime_error("crew state/roster size mismatch");
     }
@@ -544,6 +586,6 @@ void CrewPhysiologyModel::updateAllCrew(
 
         updateCrewMember(
             *matched, member, pre_step_telemetry, config, dt_seconds,
-            state.cabin_temperature_c);
+            state.cabin_temperature_c, events, state.time_min);
     }
 }
