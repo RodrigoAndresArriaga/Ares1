@@ -1,8 +1,10 @@
 CompileFlags:
   Add:
     - -std=c++17
-    - -Isrc
     - -Iinclude
+    - -Ibuild/_deps/nlohmann_json-src/include
+    - -Ibuild/_deps/catch2-src/src
+    - -Ibuild/_deps/catch2-build/generated-includes
   Remove:
     - -std=c++14*
     - -std=gnu++14*
