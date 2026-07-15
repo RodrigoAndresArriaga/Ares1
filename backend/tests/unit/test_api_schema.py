@@ -78,6 +78,15 @@ def test_error_response_optional_run_id() -> None:
     assert with_run.run_id == "run-9"
 
 
+def test_internal_server_error_code() -> None:
+    err = ErrorResponse(
+        code=ErrorCode.INTERNAL_SERVER_ERROR,
+        message="An unexpected server error occurred",
+    )
+    assert err.code == ErrorCode.INTERNAL_SERVER_ERROR
+    assert err.run_id is None
+
+
 def test_error_response_forbids_extra() -> None:
     with pytest.raises(ValidationError):
         ErrorResponse.model_validate(

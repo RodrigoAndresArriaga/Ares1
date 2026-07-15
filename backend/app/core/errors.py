@@ -1,10 +1,28 @@
-# typed domain errors for registry, artifact store, and simulator client
-# HTTP handlers deferred to Section 15
+# typed domain errors and FastAPI HTTP exception handlers
 from __future__ import annotations
 
-from typing import Any
+import logging
+from collections.abc import Mapping
+from typing import Any, Self
 
-from app.schemas.api import ErrorCode
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from app.schemas.api import ErrorCode, ErrorResponse
+
+logger = logging.getLogger("ares.errors")
+
+ARES_HTTP_STATUS_BY_CODE: Mapping[ErrorCode, int] = {
+    ErrorCode.SCENARIO_NOT_FOUND: 404,
+    ErrorCode.SIMULATOR_UNAVAILABLE: 503,
+    ErrorCode.SIMULATOR_TIMEOUT: 504,
+    ErrorCode.SIMULATOR_EXECUTION_FAILED: 502,
+    ErrorCode.SIMULATOR_OUTPUT_MISSING: 502,
+    ErrorCode.SIMULATOR_OUTPUT_INVALID_JSON: 502,
+    ErrorCode.SIMULATOR_OUTPUT_CONTRACT_ERROR: 502,
+    ErrorCode.ARTIFACT_STORAGE_ERROR: 500,
+    ErrorCode.INTERNAL_SERVER_ERROR: 500,
+}
 
 
 class AresBackendError(Exception):
@@ -19,6 +37,14 @@ class AresBackendError(Exception):
         self.message = message
         self.code = code
         self.run_id = run_id
+
+    # return same error category with run_id attached
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        raise TypeError(
+            f"{type(self).__name__} must override with_run_id",
+        )
 
 
 class ScenarioNotFoundError(AresBackendError):
@@ -36,6 +62,15 @@ class ScenarioNotFoundError(AresBackendError):
         )
         self.scenario_id = scenario_id
 
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            scenario_id=self.scenario_id,
+            run_id=run_id,
+        )
+
 
 class ArtifactStorageError(AresBackendError):
     def __init__(
@@ -49,6 +84,11 @@ class ArtifactStorageError(AresBackendError):
             code=ErrorCode.ARTIFACT_STORAGE_ERROR,
             run_id=run_id,
         )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
 
 
 class SimulatorUnavailableError(AresBackendError):
@@ -66,6 +106,15 @@ class SimulatorUnavailableError(AresBackendError):
         )
         self.process_evidence = process_evidence
 
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            run_id=run_id,
+            process_evidence=self.process_evidence,
+        )
+
 
 class SimulatorTimeoutError(AresBackendError):
     def __init__(
@@ -81,6 +130,15 @@ class SimulatorTimeoutError(AresBackendError):
             run_id=run_id,
         )
         self.process_evidence = process_evidence
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            run_id=run_id,
+            process_evidence=self.process_evidence,
+        )
 
 
 class SimulatorExecutionError(AresBackendError):
@@ -98,6 +156,15 @@ class SimulatorExecutionError(AresBackendError):
         )
         self.process_evidence = process_evidence
 
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            run_id=run_id,
+            process_evidence=self.process_evidence,
+        )
+
 
 class SimulatorOutputMissingError(AresBackendError):
     def __init__(
@@ -113,6 +180,15 @@ class SimulatorOutputMissingError(AresBackendError):
             run_id=run_id,
         )
         self.process_evidence = process_evidence
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            run_id=run_id,
+            process_evidence=self.process_evidence,
+        )
 
 
 class SimulatorOutputParseError(AresBackendError):
@@ -130,6 +206,15 @@ class SimulatorOutputParseError(AresBackendError):
         )
         self.process_evidence = process_evidence
 
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            run_id=run_id,
+            process_evidence=self.process_evidence,
+        )
+
 
 class SimulatorOutputValidationError(AresBackendError):
     def __init__(
@@ -145,3 +230,56 @@ class SimulatorOutputValidationError(AresBackendError):
             run_id=run_id,
         )
         self.process_evidence = process_evidence
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            run_id=run_id,
+            process_evidence=self.process_evidence,
+        )
+
+
+# register centralized typed and unexpected exception handlers
+def register_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(AresBackendError)
+    async def ares_backend_error_handler(
+        request: Request,
+        exc: AresBackendError,
+    ) -> JSONResponse:
+        status = ARES_HTTP_STATUS_BY_CODE.get(exc.code, 500)
+        logger.warning(
+            "ares_backend_error code=%s run_id=%s path=%s",
+            exc.code.value,
+            exc.run_id,
+            request.url.path,
+        )
+        body = ErrorResponse(
+            code=exc.code,
+            message=exc.message,
+            run_id=exc.run_id,
+        )
+        return JSONResponse(
+            status_code=status,
+            content=body.model_dump(mode="json"),
+        )
+
+    @app.exception_handler(Exception)
+    async def unexpected_error_handler(
+        request: Request,
+        exc: Exception,
+    ) -> JSONResponse:
+        logger.exception(
+            "unexpected_error path=%s",
+            request.url.path,
+        )
+        body = ErrorResponse(
+            code=ErrorCode.INTERNAL_SERVER_ERROR,
+            message="An unexpected server error occurred",
+            run_id=None,
+        )
+        return JSONResponse(
+            status_code=500,
+            content=body.model_dump(mode="json"),
+        )

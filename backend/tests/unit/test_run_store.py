@@ -402,3 +402,81 @@ def test_metadata_created_state(
     assert metadata["outcome"] is None
     assert metadata["error_code"] is None
     assert "created_at" in metadata
+
+
+def test_write_stdout_stderr_exact_bytes(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = store.create_workspace(
+        make_baseline_request(),
+        RELEASE_SCENARIO_PATH,
+    )
+    assert not workspace.stdout_path.exists()
+    assert not workspace.stderr_path.exists()
+    store.write_stdout(workspace, b"out\x00bytes")
+    store.write_stderr(workspace, b"")
+    assert workspace.stdout_path.read_bytes() == b"out\x00bytes"
+    assert workspace.stderr_path.read_bytes() == b""
+
+
+def test_hash_result_without_rewrite(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = store.create_workspace(
+        make_baseline_request(),
+        RELEASE_SCENARIO_PATH,
+    )
+    payload = b'{"outcome":"FAILURE"}'
+    workspace.result_path.write_bytes(payload)
+    digest = store.hash_result_artifact(workspace)
+    assert digest == sha256_file(workspace.result_path)
+    assert workspace.result_path.read_bytes() == payload
+    assert store.try_hash_result_artifact(workspace) == digest
+
+
+def test_try_hash_missing_result(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = store.create_workspace(
+        make_baseline_request(),
+        RELEASE_SCENARIO_PATH,
+    )
+    assert store.try_hash_result_artifact(workspace) is None
+
+
+def test_write_completed_and_failed_metadata(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = store.create_workspace(
+        make_baseline_request(),
+        RELEASE_SCENARIO_PATH,
+    )
+    created = json.loads(workspace.metadata_path.read_text(encoding="utf-8"))
+    workspace.result_path.write_bytes(b'{"ok":true}')
+    digest = store.hash_result_artifact(workspace)
+    store.write_completed_metadata(
+        workspace,
+        result_sha256=digest,
+        process_exit_code=0,
+        duration_ms=42,
+        outcome="FAILURE",
+    )
+    completed = json.loads(workspace.metadata_path.read_text(encoding="utf-8"))
+    assert completed["status"] == "completed"
+    assert completed["created_at"] == created["created_at"]
+    assert completed["scenario_sha256"] == created["scenario_sha256"]
+    assert completed["result_sha256"] == digest
+    assert completed["process_exit_code"] == 0
+    assert completed["duration_ms"] == 42
+    assert completed["outcome"] == "FAILURE"
+    assert completed["error_code"] is None
+
+    store.write_failed_metadata(
+        workspace,
+        error_code=ErrorCode.SIMULATOR_TIMEOUT.value,
+        result_sha256=digest,
+        process_exit_code=None,
+        duration_ms=99,
+        outcome=None,
+    )
+    failed = json.loads(workspace.metadata_path.read_text(encoding="utf-8"))
+    assert failed["status"] == "failed"
+    assert failed["error_code"] == "SIMULATOR_TIMEOUT"
+    assert failed["created_at"] == created["created_at"]
+    assert failed["outcome"] is None

@@ -222,3 +222,146 @@ class RunStore:
                 "Failed to copy scenario artifact",
                 run_id=dest.parent.name,
             ) from exc
+
+    # persist exact process stdout bytes
+    def write_stdout(self, workspace: RunWorkspace, data: bytes) -> None:
+        self._write_process_log(workspace, workspace.stdout_path, data)
+
+    # persist exact process stderr bytes
+    def write_stderr(self, workspace: RunWorkspace, data: bytes) -> None:
+        self._write_process_log(workspace, workspace.stderr_path, data)
+
+    # uppercase SHA-256 of existing simulator-written result.json
+    def hash_result_artifact(self, workspace: RunWorkspace) -> str:
+        try:
+            return sha256_file(workspace.result_path)
+        except ArtifactStorageError as exc:
+            raise ArtifactStorageError(
+                exc.message,
+                run_id=workspace.run_id,
+            ) from exc
+
+    # hash result when present; otherwise None
+    def try_hash_result_artifact(self, workspace: RunWorkspace) -> str | None:
+        if not workspace.result_path.is_file():
+            return None
+        return self.hash_result_artifact(workspace)
+
+    # replace created metadata with completed infrastructure evidence
+    def write_completed_metadata(
+        self,
+        workspace: RunWorkspace,
+        *,
+        result_sha256: str,
+        process_exit_code: int | None,
+        duration_ms: int | None,
+        outcome: str,
+    ) -> None:
+        created = self._load_metadata(workspace)
+        completed = RunMetadata(
+            run_id=created.run_id,
+            created_at=created.created_at,
+            mode=created.mode,
+            scenario_id=created.scenario_id,
+            plan_id=created.plan_id,
+            scenario_sha256=created.scenario_sha256,
+            plan_sha256=created.plan_sha256,
+            result_sha256=result_sha256,
+            process_exit_code=process_exit_code,
+            duration_ms=duration_ms,
+            outcome=outcome,
+            status="completed",
+            error_code=None,
+        )
+        self._write_metadata(workspace, completed)
+
+    # replace created metadata with infrastructure failure evidence
+    def write_failed_metadata(
+        self,
+        workspace: RunWorkspace,
+        *,
+        error_code: str,
+        result_sha256: str | None = None,
+        process_exit_code: int | None = None,
+        duration_ms: int | None = None,
+        outcome: str | None = None,
+    ) -> None:
+        created = self._load_metadata(workspace)
+        failed = RunMetadata(
+            run_id=created.run_id,
+            created_at=created.created_at,
+            mode=created.mode,
+            scenario_id=created.scenario_id,
+            plan_id=created.plan_id,
+            scenario_sha256=created.scenario_sha256,
+            plan_sha256=created.plan_sha256,
+            result_sha256=result_sha256,
+            process_exit_code=process_exit_code,
+            duration_ms=duration_ms,
+            outcome=outcome,
+            status="failed",
+            error_code=error_code,
+        )
+        self._write_metadata(workspace, failed)
+
+    def _write_process_log(
+        self,
+        workspace: RunWorkspace,
+        dest: Path,
+        data: bytes,
+    ) -> None:
+        try:
+            write_bytes_atomic(dest, data)
+        except ArtifactStorageError as exc:
+            raise ArtifactStorageError(
+                "Failed to write process log",
+                run_id=workspace.run_id,
+            ) from exc
+
+    def _load_metadata(self, workspace: RunWorkspace) -> RunMetadata:
+        try:
+            payload = json.loads(
+                workspace.metadata_path.read_text(encoding="utf-8"),
+            )
+        except (OSError, json.JSONDecodeError, UnicodeError) as exc:
+            raise ArtifactStorageError(
+                "Failed to read run metadata",
+                run_id=workspace.run_id,
+            ) from exc
+        try:
+            return RunMetadata(
+                run_id=payload["run_id"],
+                created_at=payload["created_at"],
+                mode=payload["mode"],
+                scenario_id=payload["scenario_id"],
+                plan_id=payload["plan_id"],
+                scenario_sha256=payload["scenario_sha256"],
+                plan_sha256=payload["plan_sha256"],
+                result_sha256=payload["result_sha256"],
+                process_exit_code=payload["process_exit_code"],
+                duration_ms=payload["duration_ms"],
+                outcome=payload["outcome"],
+                status=payload["status"],
+                error_code=payload["error_code"],
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ArtifactStorageError(
+                "Run metadata is corrupt",
+                run_id=workspace.run_id,
+            ) from exc
+
+    def _write_metadata(
+        self,
+        workspace: RunWorkspace,
+        metadata: RunMetadata,
+    ) -> None:
+        try:
+            write_json_atomic(
+                workspace.metadata_path,
+                metadata.to_json_dict(),
+            )
+        except ArtifactStorageError as exc:
+            raise ArtifactStorageError(
+                "Failed to write run metadata",
+                run_id=workspace.run_id,
+            ) from exc

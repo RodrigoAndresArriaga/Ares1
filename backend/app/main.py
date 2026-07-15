@@ -10,6 +10,12 @@ from fastapi import FastAPI
 from app.api.router import api_router
 from app.api.routes.health import evaluate_readiness
 from app.core.config import Settings, get_settings
+from app.core.errors import register_exception_handlers
+from app.core.logging import configure_logging
+from app.services.run_store import RunStore
+from app.services.scenario_registry import ScenarioRegistry
+from app.services.simulation_service import SimulationService
+from app.services.simulator_client import SimulatorClient
 
 logger = logging.getLogger("ares.main")
 
@@ -19,6 +25,20 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     readiness = evaluate_readiness(settings)
     app.state.startup_readiness = readiness
+
+    if getattr(app.state, "simulation_service", None) is None:
+        registry = ScenarioRegistry(settings.scenario_dir)
+        run_store = RunStore(settings.runs_dir)
+        simulator_client = SimulatorClient(settings)
+        app.state.scenario_registry = registry
+        app.state.run_store = run_store
+        app.state.simulator_client = simulator_client
+        app.state.simulation_service = SimulationService(
+            scenario_registry=registry,
+            run_store=run_store,
+            simulator_client=simulator_client,
+        )
+
     if readiness.ready:
         logger.info("startup readiness ok reason_code=%s", readiness.reason_code)
     else:
@@ -30,17 +50,27 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-def create_app(settings_override: Settings | None = None) -> FastAPI:
+def create_app(
+    settings_override: Settings | None = None,
+    *,
+    simulation_service_override: SimulationService | None = None,
+) -> FastAPI:
     settings = settings_override if settings_override is not None else get_settings()
+    configure_logging(settings)
     app = FastAPI(
         title="ARES-1 Phase 1 Backend",
         version="0.1.0",
         description=(
             "Phase 1 FastAPI bridge for the frozen C++ simulator. "
-            "Provides configuration validation and health readiness only."
+            "Provides configuration validation, health readiness, and "
+            "POST /api/sim/run. Mission FAILURE and REJECTED are valid "
+            "HTTP 200 results."
         ),
         lifespan=_lifespan,
     )
     app.state.settings = settings
+    if simulation_service_override is not None:
+        app.state.simulation_service = simulation_service_override
+    register_exception_handlers(app)
     app.include_router(api_router, prefix="/api")
     return app
