@@ -10,3 +10,5 @@ dist/
 build/
 data/runs/*
 !data/runs/.gitkeep
+data/sessions/*
+!data/sessions/.gitkeep

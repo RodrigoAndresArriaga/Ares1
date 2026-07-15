@@ -21,6 +21,12 @@ ARES_HTTP_STATUS_BY_CODE: Mapping[ErrorCode, int] = {
     ErrorCode.SIMULATOR_OUTPUT_INVALID_JSON: 502,
     ErrorCode.SIMULATOR_OUTPUT_CONTRACT_ERROR: 502,
     ErrorCode.ARTIFACT_STORAGE_ERROR: 500,
+    ErrorCode.MISSION_SESSION_NOT_FOUND: 404,
+    ErrorCode.MISSION_SESSION_ALREADY_EXISTS: 409,
+    ErrorCode.MISSION_SESSION_CORRUPT: 500,
+    ErrorCode.MISSION_SESSION_STORAGE_ERROR: 500,
+    ErrorCode.MISSION_STATE_CONFLICT: 409,
+    ErrorCode.MISSION_SESSION_ID_INVALID: 400,
     ErrorCode.INTERNAL_SERVER_ERROR: 500,
 }
 
@@ -89,6 +95,156 @@ class ArtifactStorageError(AresBackendError):
         if self.run_id == run_id:
             return self
         return type(self)(self.message, run_id=run_id)
+
+
+class MissionSessionNotFoundError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Mission session not found",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.MISSION_SESSION_NOT_FOUND,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class MissionSessionAlreadyExistsError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Mission session already exists",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.MISSION_SESSION_ALREADY_EXISTS,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class MissionSessionCorruptError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Mission session artifact is corrupt",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.MISSION_SESSION_CORRUPT,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class MissionSessionStorageError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Mission session storage failed",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.MISSION_SESSION_STORAGE_ERROR,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class MissionSessionConflictError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Mission session state conflict",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.MISSION_STATE_CONFLICT,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class InvalidMissionSessionIdError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Mission session ID is invalid",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.MISSION_SESSION_ID_INVALID,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
 
 
 class SimulatorUnavailableError(AresBackendError):
