@@ -1,0 +1,15 @@
+# build outputs
+build/
+.cache/
+compile_commands.json
+
+# IDE / editor
+.vs/
+.vscode/
+*.user
+*.suo
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store

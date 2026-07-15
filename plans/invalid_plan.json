@@ -1,0 +1,15 @@
+{
+  "plan_id": "invalid_plan",
+  "summary": "Packet scheduled outside every communications window",
+  "actions": [
+    {
+      "type": "send_emergency_packet",
+      "start_min": 2000
+    }
+  ],
+  "rationale": "Exercise static rejection for closed communications window",
+  "expected_risk": "plan rejected before physics",
+  "constraints_checked": [
+    "comms_window"
+  ]
+}

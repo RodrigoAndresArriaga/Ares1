@@ -1,0 +1,26 @@
+{
+  "failure_reasons": [
+    "action_start_past_end: action start_min exceeds maximum_duration_min",
+    "comms_window_closed: send_emergency_packet start is outside an open communication window"
+  ],
+  "metrics": {
+    "communications_sent": false,
+    "eva_completed": false,
+    "maximum_co2_one_hour_avg_mmhg": 0.0,
+    "maximum_crew_fatigue_percent": 0.0,
+    "minimum_battery_soc_percent": 0.0,
+    "minimum_cabin_pressure_kpa": 0.0,
+    "minimum_crew_spo2_percent": 0.0,
+    "minimum_eva_safe_return_margin_min": 0.0,
+    "minimum_inspired_o2_mmhg": 0.0,
+    "minimum_power_margin_kw": 0.0,
+    "minimum_temperature_margin_c": 0.0,
+    "time_to_stabilization_hr": 0.0
+  },
+  "outcome": "REJECTED",
+  "plan_id": "invalid_plan",
+  "scenario_id": "mars_hab_atmosphere_solar_failure",
+  "telemetry_history": [],
+  "timeline": [],
+  "valid_plan": false
+}

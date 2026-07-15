@@ -1,0 +1,340 @@
+{
+  "failure_reasons": [
+    "critical_repair_impossible"
+  ],
+  "metrics": {
+    "communications_sent": false,
+    "eva_completed": false,
+    "maximum_co2_one_hour_avg_mmhg": 0.822859428332488,
+    "maximum_crew_fatigue_percent": 0.0,
+    "minimum_battery_soc_percent": 49.726725925925905,
+    "minimum_cabin_pressure_kpa": 50.38882809786868,
+    "minimum_crew_spo2_percent": 98.0,
+    "minimum_eva_safe_return_margin_min": 350.0,
+    "minimum_inspired_o2_mmhg": 100.53095850494496,
+    "minimum_power_margin_kw": -1.2297333333333333,
+    "minimum_temperature_margin_c": 12.0,
+    "time_to_stabilization_hr": 0.0
+  },
+  "outcome": "FAILURE",
+  "plan_id": "",
+  "scenario_id": "mars_hab_atmosphere_solar_failure",
+  "telemetry_history": [
+    {
+      "active_actions": [],
+      "crew": [
+        {
+          "activity": "NOMINAL_WORK",
+          "alarms": [],
+          "cognitive_performance_percent": 87.5,
+          "core_temperature_c": 36.8,
+          "crew_id": "crew_01",
+          "display_name": "Avery Chen",
+          "fatigue_percent": 0.0,
+          "health_status": "NOMINAL",
+          "heart_rate_bpm": 65.0,
+          "physical_performance_percent": 87.5,
+          "respiratory_rate_bpm": 14.0,
+          "spo2_percent": 98.0
+        },
+        {
+          "activity": "NOMINAL_WORK",
+          "alarms": [],
+          "cognitive_performance_percent": 87.5,
+          "core_temperature_c": 36.8,
+          "crew_id": "crew_02",
+          "display_name": "Jordan Blake",
+          "fatigue_percent": 0.0,
+          "health_status": "NOMINAL",
+          "heart_rate_bpm": 62.0,
+          "physical_performance_percent": 87.5,
+          "respiratory_rate_bpm": 13.0,
+          "spo2_percent": 98.0
+        }
+      ],
+      "events": [],
+      "habitat": {
+        "battery_soc_percent": 49.95445432098765,
+        "cabin_pressure_kpa": 50.47364294487359,
+        "cabin_temperature_c": 22.0,
+        "co2_one_hour_avg_mmhg": 0.822859428332488,
+        "eva_safe_return_margin_min": 350.0,
+        "inspired_oxygen_mmhg": 100.7297009696118,
+        "mission_status": "WARNING",
+        "oxygen_hours_remaining": 46.68766288018946,
+        "power_margin_kw": -1.2297333333333333,
+        "solar_generation_percent": 5.0,
+        "temperature_margin_c": 12.0
+      },
+      "has_critical": false,
+      "has_warning": true,
+      "simulation_time_min": 0
+    },
+    {
+      "active_actions": [],
+      "crew": [
+        {
+          "activity": "NOMINAL_WORK",
+          "alarms": [],
+          "cognitive_performance_percent": 87.5,
+          "core_temperature_c": 36.8,
+          "crew_id": "crew_01",
+          "display_name": "Avery Chen",
+          "fatigue_percent": 0.0,
+          "health_status": "NOMINAL",
+          "heart_rate_bpm": 65.0,
+          "physical_performance_percent": 87.5,
+          "respiratory_rate_bpm": 14.0,
+          "spo2_percent": 98.0
+        },
+        {
+          "activity": "NOMINAL_WORK",
+          "alarms": [],
+          "cognitive_performance_percent": 87.5,
+          "core_temperature_c": 36.8,
+          "crew_id": "crew_02",
+          "display_name": "Jordan Blake",
+          "fatigue_percent": 0.0,
+          "health_status": "NOMINAL",
+          "heart_rate_bpm": 62.0,
+          "physical_performance_percent": 87.5,
+          "respiratory_rate_bpm": 13.0,
+          "spo2_percent": 98.0
+        }
+      ],
+      "events": [],
+      "habitat": {
+        "battery_soc_percent": 49.9089086419753,
+        "cabin_pressure_kpa": 50.45668056497867,
+        "cabin_temperature_c": 22.0,
+        "co2_one_hour_avg_mmhg": 0.8155831648540892,
+        "eva_safe_return_margin_min": 350.0,
+        "inspired_oxygen_mmhg": 100.68995300066045,
+        "mission_status": "WARNING",
+        "oxygen_hours_remaining": 48.01663586935075,
+        "power_margin_kw": -1.2297333333333333,
+        "solar_generation_percent": 5.0,
+        "temperature_margin_c": 12.0
+      },
+      "has_critical": false,
+      "has_warning": true,
+      "simulation_time_min": 1
+    },
+    {
+      "active_actions": [],
+      "crew": [
+        {
+          "activity": "NOMINAL_WORK",
+          "alarms": [],
+          "cognitive_performance_percent": 87.5,
+          "core_temperature_c": 36.8,
+          "crew_id": "crew_01",
+          "display_name": "Avery Chen",
+          "fatigue_percent": 0.0,
+          "health_status": "NOMINAL",
+          "heart_rate_bpm": 65.0,
+          "physical_performance_percent": 87.5,
+          "respiratory_rate_bpm": 14.0,
+          "spo2_percent": 98.0
+        },
+        {
+          "activity": "NOMINAL_WORK",
+          "alarms": [],
+          "cognitive_performance_percent": 87.5,
+          "core_temperature_c": 36.8,
+          "crew_id": "crew_02",
+          "display_name": "Jordan Blake",
+          "fatigue_percent": 0.0,
+          "health_status": "NOMINAL",
+          "heart_rate_bpm": 62.0,
+          "physical_performance_percent": 87.5,
+          "respiratory_rate_bpm": 13.0,
+          "spo2_percent": 98.0
+        }
+      ],
+      "events": [],
+      "habitat": {
+        "battery_soc_percent": 49.86336296296295,
+        "cabin_pressure_kpa": 50.43971789045971,
+        "cabin_temperature_c": 22.0,
+        "co2_one_hour_avg_mmhg": 0.8083082182052488,
+        "eva_safe_return_margin_min": 350.0,
+        "inspired_oxygen_mmhg": 100.65020476981377,
+        "mission_status": "WARNING",
+        "oxygen_hours_remaining": 47.99958003013122,
+        "power_margin_kw": -1.2297333333333333,
+        "solar_generation_percent": 5.0,
+        "temperature_margin_c": 12.0
+      },
+      "has_critical": false,
+      "has_warning": true,
+      "simulation_time_min": 2
+    },
+    {
+      "active_actions": [],
+      "crew": [
+        {
+          "activity": "NOMINAL_WORK",
+          "alarms": [],
+          "cognitive_performance_percent": 87.5,
+          "core_temperature_c": 36.8,
+          "crew_id": "crew_01",
+          "display_name": "Avery Chen",
+          "fatigue_percent": 0.0,
+          "health_status": "NOMINAL",
+          "heart_rate_bpm": 65.0,
+          "physical_performance_percent": 87.5,
+          "respiratory_rate_bpm": 14.0,
+          "spo2_percent": 98.0
+        },
+        {
+          "activity": "NOMINAL_WORK",
+          "alarms": [],
+          "cognitive_performance_percent": 87.5,
+          "core_temperature_c": 36.8,
+          "crew_id": "crew_02",
+          "display_name": "Jordan Blake",
+          "fatigue_percent": 0.0,
+          "health_status": "NOMINAL",
+          "heart_rate_bpm": 62.0,
+          "physical_performance_percent": 87.5,
+          "respiratory_rate_bpm": 13.0,
+          "spo2_percent": 98.0
+        }
+      ],
+      "events": [],
+      "habitat": {
+        "battery_soc_percent": 49.8178172839506,
+        "cabin_pressure_kpa": 50.422754921187774,
+        "cabin_temperature_c": 22.0,
+        "co2_one_hour_avg_mmhg": 0.8010345888181825,
+        "eva_safe_return_margin_min": 350.0,
+        "inspired_oxygen_mmhg": 100.61045627697612,
+        "mission_status": "WARNING",
+        "oxygen_hours_remaining": 47.982524162040484,
+        "power_margin_kw": -1.2297333333333333,
+        "solar_generation_percent": 5.0,
+        "temperature_margin_c": 12.0
+      },
+      "has_critical": false,
+      "has_warning": true,
+      "simulation_time_min": 3
+    },
+    {
+      "active_actions": [],
+      "crew": [
+        {
+          "activity": "NOMINAL_WORK",
+          "alarms": [],
+          "cognitive_performance_percent": 87.5,
+          "core_temperature_c": 36.8,
+          "crew_id": "crew_01",
+          "display_name": "Avery Chen",
+          "fatigue_percent": 0.0,
+          "health_status": "NOMINAL",
+          "heart_rate_bpm": 65.0,
+          "physical_performance_percent": 87.5,
+          "respiratory_rate_bpm": 14.0,
+          "spo2_percent": 98.0
+        },
+        {
+          "activity": "NOMINAL_WORK",
+          "alarms": [],
+          "cognitive_performance_percent": 87.5,
+          "core_temperature_c": 36.8,
+          "crew_id": "crew_02",
+          "display_name": "Jordan Blake",
+          "fatigue_percent": 0.0,
+          "health_status": "NOMINAL",
+          "heart_rate_bpm": 62.0,
+          "physical_performance_percent": 87.5,
+          "respiratory_rate_bpm": 13.0,
+          "spo2_percent": 98.0
+        }
+      ],
+      "events": [],
+      "habitat": {
+        "battery_soc_percent": 49.772271604938254,
+        "cabin_pressure_kpa": 50.40579165703382,
+        "cabin_temperature_c": 22.0,
+        "co2_one_hour_avg_mmhg": 0.7937622771253807,
+        "eva_safe_return_margin_min": 350.0,
+        "inspired_oxygen_mmhg": 100.5707075220518,
+        "mission_status": "WARNING",
+        "oxygen_hours_remaining": 47.96546826506624,
+        "power_margin_kw": -1.2297333333333333,
+        "solar_generation_percent": 5.0,
+        "temperature_margin_c": 12.0
+      },
+      "has_critical": false,
+      "has_warning": true,
+      "simulation_time_min": 4
+    },
+    {
+      "active_actions": [],
+      "crew": [
+        {
+          "activity": "NOMINAL_WORK",
+          "alarms": [],
+          "cognitive_performance_percent": 87.5,
+          "core_temperature_c": 36.8,
+          "crew_id": "crew_01",
+          "display_name": "Avery Chen",
+          "fatigue_percent": 0.0,
+          "health_status": "NOMINAL",
+          "heart_rate_bpm": 65.0,
+          "physical_performance_percent": 87.5,
+          "respiratory_rate_bpm": 14.0,
+          "spo2_percent": 98.0
+        },
+        {
+          "activity": "NOMINAL_WORK",
+          "alarms": [],
+          "cognitive_performance_percent": 87.5,
+          "core_temperature_c": 36.8,
+          "crew_id": "crew_02",
+          "display_name": "Jordan Blake",
+          "fatigue_percent": 0.0,
+          "health_status": "NOMINAL",
+          "heart_rate_bpm": 62.0,
+          "physical_performance_percent": 87.5,
+          "respiratory_rate_bpm": 13.0,
+          "spo2_percent": 98.0
+        }
+      ],
+      "events": [
+        {
+          "event_type": "mission_failure",
+          "message": "critical_repair_impossible",
+          "severity": "FAILURE",
+          "time_min": 5
+        }
+      ],
+      "habitat": {
+        "battery_soc_percent": 49.726725925925905,
+        "cabin_pressure_kpa": 50.38882809786868,
+        "cabin_temperature_c": 22.0,
+        "co2_one_hour_avg_mmhg": 0.7864912835596097,
+        "eva_safe_return_margin_min": 350.0,
+        "inspired_oxygen_mmhg": 100.53095850494496,
+        "mission_status": "FAILURE",
+        "oxygen_hours_remaining": 47.94841233919622,
+        "power_margin_kw": -1.2297333333333333,
+        "solar_generation_percent": 5.0,
+        "temperature_margin_c": 12.0
+      },
+      "has_critical": true,
+      "has_warning": false,
+      "simulation_time_min": 5
+    }
+  ],
+  "timeline": [
+    {
+      "event_type": "mission_failure",
+      "message": "critical_repair_impossible",
+      "severity": "FAILURE",
+      "time_min": 5
+    }
+  ],
+  "valid_plan": true
+}

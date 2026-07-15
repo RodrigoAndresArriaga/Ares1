@@ -1,0 +1,29 @@
+{
+  "plan_id": "sample_plan",
+  "summary": "Isolate leaking lab module and repair degraded solar array via EVA",
+  "actions": [
+    {
+      "type": "isolate_module",
+      "start_min": 0,
+      "module": "lab"
+    },
+    {
+      "type": "reduce_power_load",
+      "start_min": 0,
+      "percent": 50.0,
+      "load_groups": ["discretionary"]
+    },
+    {
+      "type": "repair_solar_array",
+      "start_min": 1,
+      "eva_crew_id": "crew_01"
+    }
+  ],
+  "rationale": "Cut leak rate below stabilize threshold, shed discretionary load during repair, restore solar generation before battery reserve",
+  "expected_risk": "EVA consumable budget; temporary reduced discretionary systems",
+  "constraints_checked": [
+    "leak_module_unoccupied",
+    "eva_crew_qualified",
+    "comms_not_required_for_repair"
+  ]
+}

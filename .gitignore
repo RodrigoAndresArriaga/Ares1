@@ -1,13 +1,39 @@
-# build outputs
-build/
-.cache/
-compile_commands.json
+# C++ simulator build outputs
+Simulator/build/
+Simulator/.cache/
+Simulator/compile_commands.json
+
+# Backend Python
+backend/.venv/
+backend/.env
+backend/**/__pycache__/
+backend/**/*.py[cod]
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/*.egg-info/
+backend/dist/
+backend/build/
+backend/data/runs/*
+!backend/data/runs/.gitkeep
+
+# Env / secrets
+.env
+**/.env
+
+# Python caches (any package)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # IDE / editor
 .vs/
 .vscode/
 *.user
 *.suo
+.idea/
 
 # OS
 Thumbs.db
