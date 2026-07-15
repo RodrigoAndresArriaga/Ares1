@@ -1,4 +1,5 @@
 # shared fixture loaders for immutable Section 7 evidence
+# Section 9 temp layout helpers for Settings / app tests
 from __future__ import annotations
 
 import json
@@ -6,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from app.api.routes.health import RELEASE_SCENARIO_FILENAME
+from app.core.config import Settings
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
@@ -53,3 +56,47 @@ def all_result_data(
     invalid_plan_result_data: Any,
 ) -> list[Any]:
     return [baseline_result_data, valid_plan_result_data, invalid_plan_result_data]
+
+
+# build isolated project/simulator/scenario/runs tree under tmp_path
+def make_valid_layout(root: Path) -> dict[str, Path]:
+    project_root = root / "project"
+    sim_binary = project_root / "Simulator" / "build" / "sim_core.exe"
+    scenario_dir = project_root / "scenarios"
+    runs_dir = root / "runs"
+    sim_binary.parent.mkdir(parents=True, exist_ok=True)
+    sim_binary.write_bytes(b"")
+    scenario_dir.mkdir(parents=True, exist_ok=True)
+    (scenario_dir / RELEASE_SCENARIO_FILENAME).write_text("{}", encoding="utf-8")
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    return {
+        "project_root": project_root,
+        "sim_binary": sim_binary,
+        "scenario_dir": scenario_dir,
+        "runs_dir": runs_dir,
+    }
+
+
+# construct Settings from an isolated layout without reading process .env
+def settings_from_layout(layout: dict[str, Path], **overrides: Any) -> Settings:
+    values: dict[str, Any] = {
+        "project_root": layout["project_root"],
+        "sim_binary": layout["sim_binary"],
+        "scenario_dir": layout["scenario_dir"],
+        "runs_dir": layout["runs_dir"],
+        "sim_timeout_seconds": 30.0,
+        "max_concurrent_runs": 2,
+        "log_level": "INFO",
+    }
+    values.update(overrides)
+    return Settings(_env_file=None, **values)
+
+
+@pytest.fixture
+def valid_layout(tmp_path: Path) -> dict[str, Path]:
+    return make_valid_layout(tmp_path)
+
+
+@pytest.fixture
+def valid_settings(valid_layout: dict[str, Path]) -> Settings:
+    return settings_from_layout(valid_layout)

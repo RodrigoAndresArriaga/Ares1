@@ -1,1 +1,7 @@
-# router placeholder (Section 9)
+# aggregate Phase 1 API routes under /api
+from fastapi import APIRouter
+
+from app.api.routes import health
+
+api_router = APIRouter()
+api_router.include_router(health.router)
