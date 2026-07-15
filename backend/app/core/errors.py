@@ -27,6 +27,10 @@ ARES_HTTP_STATUS_BY_CODE: Mapping[ErrorCode, int] = {
     ErrorCode.MISSION_SESSION_STORAGE_ERROR: 500,
     ErrorCode.MISSION_STATE_CONFLICT: 409,
     ErrorCode.MISSION_SESSION_ID_INVALID: 400,
+    ErrorCode.BASELINE_TELEMETRY_EMPTY: 500,
+    ErrorCode.REPLAY_INTERVAL_INVALID: 422,
+    ErrorCode.MISSION_TRIGGER_FAILED: 500,
+    ErrorCode.MISSION_TRIGGER_CANCELLED: 500,
     ErrorCode.RUN_NOT_FOUND: 404,
     ErrorCode.RUN_ID_INVALID: 400,
     ErrorCode.RUN_RESULT_NOT_FOUND: 404,
@@ -224,6 +228,65 @@ class MissionSessionConflictError(AresBackendError):
             return self
         return type(self)(
             self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class BaselineTelemetryEmptyError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Baseline simulation returned empty telemetry history",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.BASELINE_TELEMETRY_EMPTY,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class ReplayIntervalInvalidError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Replay interval is outside configured bounds",
+        *,
+        provided_interval_ms: int | None = None,
+        min_interval_ms: int | None = None,
+        max_interval_ms: int | None = None,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.REPLAY_INTERVAL_INVALID,
+            run_id=run_id,
+        )
+        self.provided_interval_ms = provided_interval_ms
+        self.min_interval_ms = min_interval_ms
+        self.max_interval_ms = max_interval_ms
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            provided_interval_ms=self.provided_interval_ms,
+            min_interval_ms=self.min_interval_ms,
+            max_interval_ms=self.max_interval_ms,
             session_id=self.session_id,
             run_id=run_id,
         )
