@@ -44,7 +44,8 @@ mypy app
 - `app/main.py` — application factory and lifespan readiness (Section 9)
 - `app/api/routes/health.py` — `GET /api/health` (Section 9)
 - `app/schemas/` — strict Pydantic v2 contracts (Section 8)
-- `app/services/` — scaffold only until later sections
+- `app/services/scenario_registry.py` — trusted scenario ID → path (Section 10)
+- `app/services/run_store.py` — UUID run workspaces and artifacts (Section 11)
 - `tests/fixtures/results/` — immutable Section 7 capture fixtures
 - Release plans remain under repo `plans/`
 
