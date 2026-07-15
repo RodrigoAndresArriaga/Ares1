@@ -1,6 +1,8 @@
-# typed domain errors for registry and artifact store
+# typed domain errors for registry, artifact store, and simulator client
 # HTTP handlers deferred to Section 15
 from __future__ import annotations
+
+from typing import Any
 
 from app.schemas.api import ErrorCode
 
@@ -47,3 +49,99 @@ class ArtifactStorageError(AresBackendError):
             code=ErrorCode.ARTIFACT_STORAGE_ERROR,
             run_id=run_id,
         )
+
+
+class SimulatorUnavailableError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Simulator executable is unavailable",
+        *,
+        run_id: str | None = None,
+        process_evidence: Any | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.SIMULATOR_UNAVAILABLE,
+            run_id=run_id,
+        )
+        self.process_evidence = process_evidence
+
+
+class SimulatorTimeoutError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Simulator execution timed out",
+        *,
+        run_id: str | None = None,
+        process_evidence: Any | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.SIMULATOR_TIMEOUT,
+            run_id=run_id,
+        )
+        self.process_evidence = process_evidence
+
+
+class SimulatorExecutionError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Simulator process execution failed",
+        *,
+        run_id: str | None = None,
+        process_evidence: Any | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.SIMULATOR_EXECUTION_FAILED,
+            run_id=run_id,
+        )
+        self.process_evidence = process_evidence
+
+
+class SimulatorOutputMissingError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Simulator result output is missing",
+        *,
+        run_id: str | None = None,
+        process_evidence: Any | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.SIMULATOR_OUTPUT_MISSING,
+            run_id=run_id,
+        )
+        self.process_evidence = process_evidence
+
+
+class SimulatorOutputParseError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Simulator result output is not valid JSON",
+        *,
+        run_id: str | None = None,
+        process_evidence: Any | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.SIMULATOR_OUTPUT_INVALID_JSON,
+            run_id=run_id,
+        )
+        self.process_evidence = process_evidence
+
+
+class SimulatorOutputValidationError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Simulator result failed contract validation",
+        *,
+        run_id: str | None = None,
+        process_evidence: Any | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.SIMULATOR_OUTPUT_CONTRACT_ERROR,
+            run_id=run_id,
+        )
+        self.process_evidence = process_evidence
