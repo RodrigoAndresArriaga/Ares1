@@ -1,7 +1,8 @@
-# RunStore: UUID workspaces, exact copies, atomic writes, hashes
+# RunStore: UUID workspaces, exact copies, atomic writes, hashes, strict retrieval
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -9,9 +10,19 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from app.core.errors import ArtifactStorageError
+from app.core.errors import (
+    ArtifactStorageError,
+    InvalidRunIdError,
+    RunMetadataCorruptError,
+    RunMetadataNotFoundError,
+    RunNotFoundError,
+    RunResultCorruptError,
+    RunResultNotFoundError,
+)
 from app.schemas.api import ErrorCode, SimulationRunRequest
 from app.schemas.plan import RecoveryPlan
+from app.schemas.result import OutcomeStatus, SimulationResult
+from app.schemas.run import RunArtifactMetadata
 from app.services.run_store import (
     RunStore,
     RunWorkspace,
@@ -22,9 +33,11 @@ from app.services.run_store import (
 from tests.conftest import (
     RELEASE_SCENARIO_ID,
     RELEASE_SCENARIO_PATH,
+    RESULTS_DIR,
     SHARED_SIM_RESULT_PATH,
     make_baseline_request,
     make_plan_request,
+    sha256_hex_upper,
 )
 
 
@@ -480,3 +493,378 @@ def test_write_completed_and_failed_metadata(tmp_path: Path) -> None:
     assert failed["error_code"] == "SIMULATOR_TIMEOUT"
     assert failed["created_at"] == created["created_at"]
     assert failed["outcome"] is None
+
+
+def _try_symlink(link: Path, target: Path) -> bool:
+    try:
+        link.symlink_to(target)
+        return True
+    except OSError:
+        return False
+
+
+def _seed_completed_run(
+    store: RunStore,
+    result_fixture: Path,
+    *,
+    request: SimulationRunRequest | None = None,
+) -> RunWorkspace:
+    req = request if request is not None else make_baseline_request()
+    workspace = store.create_workspace(req, RELEASE_SCENARIO_PATH)
+    result_bytes = result_fixture.read_bytes()
+    workspace.result_path.write_bytes(result_bytes)
+    outcome = json.loads(result_bytes.decode("utf-8"))["outcome"]
+    store.write_completed_metadata(
+        workspace,
+        result_sha256=sha256_file(workspace.result_path),
+        process_exit_code=0,
+        duration_ms=1,
+        outcome=outcome,
+    )
+    return workspace
+
+
+def _artifact_snapshot(run_dir: Path) -> dict[str, bytes]:
+    return {
+        path.name: path.read_bytes()
+        for path in sorted(run_dir.iterdir())
+        if path.is_file()
+    }
+
+
+def test_construction_relative_root_cwd_independent(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    store = RunStore(runs)
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    (tmp_path / "other").mkdir()
+    original = Path.cwd()
+    try:
+        os.chdir(tmp_path / "other")
+        result = store.read_result(workspace.run_id)
+        metadata = store.read_metadata(workspace.run_id)
+    finally:
+        os.chdir(original)
+    assert result.outcome == OutcomeStatus.FAILURE
+    assert metadata.status == "completed"
+
+
+def test_retrieval_after_cwd_change(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    store = RunStore(runs)
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    original = Path.cwd()
+    try:
+        os.chdir(tmp_path)
+        read = store.read_result(workspace.run_id)
+    finally:
+        os.chdir(original)
+    assert read.outcome == OutcomeStatus.FAILURE
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "not-a-uuid",
+        "ABCDEF00-0000-4000-8000-000000000001",
+        "00000000400080000000000000000001",
+        "{00000000-0000-4000-8000-000000000001}",
+        "00000000-0000-4000-8000-000000000001 ",
+        "../00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000001/../x",
+        r"00000000-0000-4000-8000-000000000001" + "\\",
+        "%2e%2e%2f00000000-0000-4000-8000-000000000001",
+        "",
+        "run-name",
+    ],
+)
+def test_rejects_invalid_run_ids(tmp_path: Path, bad_id: str) -> None:
+    store = RunStore(tmp_path / "runs")
+    with pytest.raises(InvalidRunIdError) as exc_info:
+        store.read_result(bad_id)
+    assert exc_info.value.code == ErrorCode.RUN_ID_INVALID
+    assert str(tmp_path) not in exc_info.value.message
+
+
+def test_read_baseline_failure_result(tmp_path: Path, baseline_result_data: Any) -> None:
+    store = RunStore(tmp_path / "runs")
+    fixture = RESULTS_DIR / "baseline_result.json"
+    workspace = _seed_completed_run(store, fixture)
+    before_bytes = workspace.result_path.read_bytes()
+    before_hash = sha256_hex_upper(workspace.result_path)
+    result = store.read_result(workspace.run_id)
+    expected = SimulationResult.model_validate(baseline_result_data)
+    assert result == expected
+    assert result.outcome == OutcomeStatus.FAILURE
+    assert result.plan_id == ""
+    assert result.valid_plan is True
+    assert workspace.result_path.read_bytes() == before_bytes
+    assert sha256_hex_upper(workspace.result_path) == before_hash
+
+
+def test_read_stabilized_result(
+    tmp_path: Path,
+    valid_plan_result_data: Any,
+    sample_plan_data: Any,
+) -> None:
+    store = RunStore(tmp_path / "runs")
+    fixture = RESULTS_DIR / "valid_plan_result.json"
+    workspace = _seed_completed_run(
+        store,
+        fixture,
+        request=make_plan_request(sample_plan_data),
+    )
+    result = store.read_result(workspace.run_id)
+    expected = SimulationResult.model_validate(valid_plan_result_data)
+    assert result == expected
+    assert result.outcome == OutcomeStatus.STABILIZED
+
+
+def test_read_rejected_result(
+    tmp_path: Path,
+    invalid_plan_result_data: Any,
+    invalid_plan_data: Any,
+) -> None:
+    store = RunStore(tmp_path / "runs")
+    fixture = RESULTS_DIR / "invalid_plan_result.json"
+    workspace = _seed_completed_run(
+        store,
+        fixture,
+        request=make_plan_request(invalid_plan_data),
+    )
+    result = store.read_result(workspace.run_id)
+    expected = SimulationResult.model_validate(invalid_plan_result_data)
+    assert result == expected
+    assert result.outcome == OutcomeStatus.REJECTED
+    assert result.valid_plan is False
+
+
+def test_read_metadata_from_phase1_path(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    before_bytes = workspace.metadata_path.read_bytes()
+    before_hash = sha256_hex_upper(workspace.metadata_path)
+    metadata = store.read_metadata(workspace.run_id)
+    persisted = json.loads(workspace.metadata_path.read_text(encoding="utf-8"))
+    assert metadata == RunArtifactMetadata.model_validate(persisted)
+    assert metadata.run_id == workspace.run_id
+    assert metadata.outcome == "FAILURE"
+    assert workspace.metadata_path.read_bytes() == before_bytes
+    assert sha256_hex_upper(workspace.metadata_path) == before_hash
+
+
+def test_unknown_run_not_found(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    missing = "00000000-0000-4000-8000-000000000099"
+    with pytest.raises(RunNotFoundError) as exc_info:
+        store.read_result(missing)
+    assert exc_info.value.code == ErrorCode.RUN_NOT_FOUND
+    assert str(tmp_path) not in exc_info.value.message
+
+
+def test_missing_result_json(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = store.create_workspace(make_baseline_request(), RELEASE_SCENARIO_PATH)
+    with pytest.raises(RunResultNotFoundError) as exc_info:
+        store.read_result(workspace.run_id)
+    assert exc_info.value.code == ErrorCode.RUN_RESULT_NOT_FOUND
+
+
+def test_missing_metadata_json(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = store.create_workspace(make_baseline_request(), RELEASE_SCENARIO_PATH)
+    workspace.metadata_path.unlink()
+    with pytest.raises(RunMetadataNotFoundError) as exc_info:
+        store.read_metadata(workspace.run_id)
+    assert exc_info.value.code == ErrorCode.RUN_METADATA_NOT_FOUND
+
+
+def test_result_path_is_directory(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = store.create_workspace(make_baseline_request(), RELEASE_SCENARIO_PATH)
+    workspace.result_path.mkdir()
+    with pytest.raises(RunResultCorruptError) as exc_info:
+        store.read_result(workspace.run_id)
+    assert exc_info.value.code == ErrorCode.RUN_RESULT_CORRUPT
+
+
+def test_metadata_path_is_directory(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = store.create_workspace(make_baseline_request(), RELEASE_SCENARIO_PATH)
+    workspace.metadata_path.unlink()
+    workspace.metadata_path.mkdir()
+    with pytest.raises(RunMetadataCorruptError) as exc_info:
+        store.read_metadata(workspace.run_id)
+    assert exc_info.value.code == ErrorCode.RUN_METADATA_CORRUPT
+
+
+def test_corrupt_result_invalid_utf8(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    workspace.result_path.write_bytes(b"\xff\xfe")
+    with pytest.raises(RunResultCorruptError):
+        store.read_result(workspace.run_id)
+
+
+def test_corrupt_result_malformed_json(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    workspace.result_path.write_text("{not json", encoding="utf-8")
+    with pytest.raises(RunResultCorruptError):
+        store.read_result(workspace.run_id)
+
+
+def test_corrupt_result_extra_field(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    payload = json.loads(workspace.result_path.read_text(encoding="utf-8"))
+    payload["survival_probability"] = 0.5
+    workspace.result_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(RunResultCorruptError):
+        store.read_result(workspace.run_id)
+
+
+def test_corrupt_result_missing_telemetry_history(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    payload = json.loads(workspace.result_path.read_text(encoding="utf-8"))
+    del payload["telemetry_history"]
+    workspace.result_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(RunResultCorruptError):
+        store.read_result(workspace.run_id)
+
+
+def test_corrupt_result_invalid_outcome(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    payload = json.loads(workspace.result_path.read_text(encoding="utf-8"))
+    payload["outcome"] = "EXPLODED"
+    workspace.result_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(RunResultCorruptError):
+        store.read_result(workspace.run_id)
+
+
+def test_corrupt_metadata_invalid_utf8(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    workspace.metadata_path.write_bytes(b"\xff\xfe")
+    with pytest.raises(RunMetadataCorruptError):
+        store.read_metadata(workspace.run_id)
+
+
+def test_corrupt_metadata_malformed_json(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    workspace.metadata_path.write_text("{bad", encoding="utf-8")
+    with pytest.raises(RunMetadataCorruptError):
+        store.read_metadata(workspace.run_id)
+
+
+def test_corrupt_metadata_extra_field(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    payload = json.loads(workspace.metadata_path.read_text(encoding="utf-8"))
+    payload["extra"] = True
+    workspace.metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(RunMetadataCorruptError):
+        store.read_metadata(workspace.run_id)
+
+
+def test_corrupt_metadata_run_id_mismatch(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    payload = json.loads(workspace.metadata_path.read_text(encoding="utf-8"))
+    payload["run_id"] = "00000000-0000-4000-8000-000000000001"
+    workspace.metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(RunMetadataCorruptError):
+        store.read_metadata(workspace.run_id)
+
+
+def test_corrupt_metadata_invalid_hash(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    payload = json.loads(workspace.metadata_path.read_text(encoding="utf-8"))
+    payload["scenario_sha256"] = "abc"
+    workspace.metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(RunMetadataCorruptError):
+        store.read_metadata(workspace.run_id)
+
+
+def test_symlink_run_directory_escape_rejected(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = runs / "00000000-0000-4000-8000-000000000001"
+    if not _try_symlink(link, outside):
+        pytest.skip("symlinks not supported")
+    store = RunStore(runs)
+    with pytest.raises(RunNotFoundError):
+        store.read_result("00000000-0000-4000-8000-000000000001")
+
+
+def test_symlink_result_escape_rejected(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = store.create_workspace(make_baseline_request(), RELEASE_SCENARIO_PATH)
+    outside = tmp_path / "secret.json"
+    outside.write_text("{}", encoding="utf-8")
+    link = workspace.result_path
+    link.unlink(missing_ok=True)
+    if not _try_symlink(link, outside):
+        pytest.skip("symlinks not supported")
+    with pytest.raises(RunResultCorruptError):
+        store.read_result(workspace.run_id)
+
+
+def test_symlink_metadata_escape_rejected(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = store.create_workspace(make_baseline_request(), RELEASE_SCENARIO_PATH)
+    outside = tmp_path / "secret.json"
+    outside.write_text("{}", encoding="utf-8")
+    link = workspace.metadata_path
+    link.unlink(missing_ok=True)
+    if not _try_symlink(link, outside):
+        pytest.skip("symlinks not supported")
+    with pytest.raises(RunMetadataCorruptError):
+        store.read_metadata(workspace.run_id)
+
+
+def test_contained_run_accepted(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    assert store.read_result(workspace.run_id).outcome == OutcomeStatus.FAILURE
+
+
+def test_repeated_reads_do_not_mutate_artifacts(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    workspace = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    run_dir = workspace.root
+    before_files = _artifact_snapshot(run_dir)
+    before_result_hash = sha256_hex_upper(workspace.result_path)
+    before_metadata_hash = sha256_hex_upper(workspace.metadata_path)
+    for _ in range(3):
+        store.read_result(workspace.run_id)
+        store.read_metadata(workspace.run_id)
+    assert _artifact_snapshot(run_dir) == before_files
+    assert sha256_hex_upper(workspace.result_path) == before_result_hash
+    assert sha256_hex_upper(workspace.metadata_path) == before_metadata_hash
+    assert list(run_dir.glob(".*.tmp")) == []
+
+
+def test_failure_and_rejected_return_simulation_result(
+    tmp_path: Path,
+    invalid_plan_data: Any,
+) -> None:
+    store = RunStore(tmp_path / "runs")
+    failure_ws = _seed_completed_run(store, RESULTS_DIR / "baseline_result.json")
+    failure = store.read_result(failure_ws.run_id)
+    assert isinstance(failure, SimulationResult)
+    assert failure.outcome == OutcomeStatus.FAILURE
+
+    rejected_ws = _seed_completed_run(
+        store,
+        RESULTS_DIR / "invalid_plan_result.json",
+        request=make_plan_request(invalid_plan_data),
+    )
+    rejected = store.read_result(rejected_ws.run_id)
+    assert isinstance(rejected, SimulationResult)
+    assert rejected.outcome == OutcomeStatus.REJECTED

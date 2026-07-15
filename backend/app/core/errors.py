@@ -27,6 +27,13 @@ ARES_HTTP_STATUS_BY_CODE: Mapping[ErrorCode, int] = {
     ErrorCode.MISSION_SESSION_STORAGE_ERROR: 500,
     ErrorCode.MISSION_STATE_CONFLICT: 409,
     ErrorCode.MISSION_SESSION_ID_INVALID: 400,
+    ErrorCode.RUN_NOT_FOUND: 404,
+    ErrorCode.RUN_ID_INVALID: 400,
+    ErrorCode.RUN_RESULT_NOT_FOUND: 404,
+    ErrorCode.RUN_RESULT_CORRUPT: 500,
+    ErrorCode.RUN_METADATA_NOT_FOUND: 404,
+    ErrorCode.RUN_METADATA_CORRUPT: 500,
+    ErrorCode.RUN_ARTIFACT_STORAGE_ERROR: 500,
     ErrorCode.INTERNAL_SERVER_ERROR: 500,
 }
 
@@ -370,6 +377,139 @@ class SimulatorOutputParseError(AresBackendError):
             run_id=run_id,
             process_evidence=self.process_evidence,
         )
+
+
+class InvalidRunIdError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Run ID is invalid",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.RUN_ID_INVALID,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class RunNotFoundError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Run not found",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.RUN_NOT_FOUND,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class RunResultNotFoundError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Run result artifact not found",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.RUN_RESULT_NOT_FOUND,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class RunResultCorruptError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Run result artifact is corrupt",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.RUN_RESULT_CORRUPT,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class RunMetadataNotFoundError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Run metadata artifact not found",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.RUN_METADATA_NOT_FOUND,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class RunMetadataCorruptError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Run metadata artifact is corrupt",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.RUN_METADATA_CORRUPT,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class RunArtifactStorageError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Run artifact storage failed",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.RUN_ARTIFACT_STORAGE_ERROR,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
 
 
 class SimulatorOutputValidationError(AresBackendError):

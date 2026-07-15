@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 import uuid
@@ -12,13 +13,30 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from app.core.errors import ArtifactStorageError
-from app.schemas.api import SimulationRunRequest
+from pydantic import ValidationError
+
+from app.core.errors import (
+    ArtifactStorageError,
+    InvalidRunIdError,
+    RunArtifactStorageError,
+    RunMetadataCorruptError,
+    RunMetadataNotFoundError,
+    RunNotFoundError,
+    RunResultCorruptError,
+    RunResultNotFoundError,
+)
+from app.schemas.api import ErrorCode, SimulationRunRequest
+from app.schemas.result import SimulationResult
+from app.schemas.run import RunArtifactMetadata, validate_canonical_run_id
+
+logger = logging.getLogger("ares.run_store")
 
 _UUID_CREATE_ATTEMPTS = 3
 _HASH_CHUNK_SIZE = 1024 * 1024
 _JSON_INDENT = 2
 _JSON_SEPARATORS = (", ", ": ")
+_RESULT_FILENAME = "result.json"
+_METADATA_FILENAME = "metadata.json"
 
 
 # uppercase hex SHA-256 of on-disk file bytes (Section 7 convention)
@@ -103,6 +121,241 @@ class RunMetadata:
 class RunStore:
     def __init__(self, runs_root: Path) -> None:
         self._runs_root = runs_root.resolve()
+
+    # accept only canonical lowercase hyphenated UUID strings
+    def _canonical_run_id(self, value: object) -> str:
+        try:
+            return validate_canonical_run_id(value)
+        except ValueError as exc:
+            run_id = value if isinstance(value, str) else None
+            raise InvalidRunIdError(
+                "Run ID is invalid",
+                run_id=run_id,
+            ) from exc
+
+    # resolve run directory and prove containment under the runs root
+    def _resolve_run_directory(self, run_id: str) -> Path:
+        canonical = self._canonical_run_id(run_id)
+        candidate = self._runs_root / canonical
+        resolved = candidate.resolve()
+        if not resolved.is_relative_to(self._runs_root):
+            logger.warning(
+                "run_directory_containment_rejected run_id=%s error_code=%s",
+                canonical,
+                ErrorCode.RUN_NOT_FOUND.value,
+            )
+            raise RunNotFoundError("Run not found", run_id=canonical)
+        if candidate.is_symlink():
+            if not resolved.is_relative_to(self._runs_root):
+                logger.warning(
+                    "run_directory_symlink_escape run_id=%s error_code=%s",
+                    canonical,
+                    ErrorCode.RUN_NOT_FOUND.value,
+                )
+                raise RunNotFoundError("Run not found", run_id=canonical)
+        if not resolved.is_dir():
+            logger.warning(
+                "run_not_found run_id=%s error_code=%s",
+                canonical,
+                ErrorCode.RUN_NOT_FOUND.value,
+            )
+            raise RunNotFoundError("Run not found", run_id=canonical)
+        return resolved
+
+    # resolve a contained artifact file under the trusted run directory
+    def _resolve_artifact_path(
+        self,
+        run_id: str,
+        filename: str,
+        *,
+        artifact_label: Literal["result", "metadata"],
+    ) -> Path:
+        canonical = self._canonical_run_id(run_id)
+        run_dir = self._resolve_run_directory(canonical)
+        not_found_error = (
+            RunResultNotFoundError
+            if artifact_label == "result"
+            else RunMetadataNotFoundError
+        )
+        corrupt_error = (
+            RunResultCorruptError
+            if artifact_label == "result"
+            else RunMetadataCorruptError
+        )
+        not_found_message = (
+            "Run result artifact not found"
+            if artifact_label == "result"
+            else "Run metadata artifact not found"
+        )
+        corrupt_message = (
+            "Run result artifact is corrupt"
+            if artifact_label == "result"
+            else "Run metadata artifact is corrupt"
+        )
+        corrupt_code = (
+            ErrorCode.RUN_RESULT_CORRUPT.value
+            if artifact_label == "result"
+            else ErrorCode.RUN_METADATA_CORRUPT.value
+        )
+        not_found_code = (
+            ErrorCode.RUN_RESULT_NOT_FOUND.value
+            if artifact_label == "result"
+            else ErrorCode.RUN_METADATA_NOT_FOUND.value
+        )
+        candidate = run_dir / filename
+        if candidate.is_symlink():
+            resolved = candidate.resolve()
+            if not resolved.is_relative_to(run_dir):
+                logger.warning(
+                    "run_artifact_symlink_escape run_id=%s artifact_type=%s error_code=%s",
+                    canonical,
+                    artifact_label,
+                    corrupt_code,
+                )
+                raise corrupt_error(corrupt_message, run_id=canonical)
+            if not resolved.is_file() or resolved.is_symlink():
+                logger.warning(
+                    "run_artifact_corrupt run_id=%s artifact_type=%s error_code=%s",
+                    canonical,
+                    artifact_label,
+                    corrupt_code,
+                )
+                raise corrupt_error(corrupt_message, run_id=canonical)
+            return resolved
+        resolved = candidate.resolve()
+        if not resolved.is_relative_to(run_dir):
+            logger.warning(
+                "run_artifact_containment_rejected run_id=%s artifact_type=%s error_code=%s",
+                canonical,
+                artifact_label,
+                corrupt_code,
+            )
+            raise corrupt_error(corrupt_message, run_id=canonical)
+        if resolved.is_dir():
+            logger.warning(
+                "run_artifact_is_directory run_id=%s artifact_type=%s error_code=%s",
+                canonical,
+                artifact_label,
+                corrupt_code,
+            )
+            raise corrupt_error(corrupt_message, run_id=canonical)
+        if not resolved.is_file():
+            logger.warning(
+                "run_artifact_not_found run_id=%s artifact_type=%s error_code=%s",
+                canonical,
+                artifact_label,
+                not_found_code,
+            )
+            raise not_found_error(not_found_message, run_id=canonical)
+        return resolved
+
+    # read and validate persisted result.json without mutating the artifact
+    def read_result(self, run_id: str) -> SimulationResult:
+        canonical = self._canonical_run_id(run_id)
+        path = self._resolve_artifact_path(
+            canonical,
+            _RESULT_FILENAME,
+            artifact_label="result",
+        )
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeError as exc:
+            logger.warning(
+                "run_result_corrupt run_id=%s artifact_type=result error_code=%s",
+                canonical,
+                ErrorCode.RUN_RESULT_CORRUPT.value,
+            )
+            raise RunResultCorruptError(
+                "Run result artifact is corrupt",
+                run_id=canonical,
+            ) from exc
+        except OSError as exc:
+            logger.warning(
+                "run_artifact_storage_error run_id=%s artifact_type=result error_code=%s",
+                canonical,
+                ErrorCode.RUN_ARTIFACT_STORAGE_ERROR.value,
+            )
+            raise RunArtifactStorageError(
+                "Run artifact storage failed",
+                run_id=canonical,
+            ) from exc
+        try:
+            result = SimulationResult.model_validate_json(text)
+        except ValidationError as exc:
+            logger.warning(
+                "run_result_corrupt run_id=%s artifact_type=result error_code=%s",
+                canonical,
+                ErrorCode.RUN_RESULT_CORRUPT.value,
+            )
+            raise RunResultCorruptError(
+                "Run result artifact is corrupt",
+                run_id=canonical,
+            ) from exc
+        logger.debug(
+            "run_result_retrieved run_id=%s artifact_type=result outcome=%s",
+            canonical,
+            result.outcome.value,
+        )
+        return result
+
+    # read and validate persisted metadata.json without mutating the artifact
+    def read_metadata(self, run_id: str) -> RunArtifactMetadata:
+        canonical = self._canonical_run_id(run_id)
+        path = self._resolve_artifact_path(
+            canonical,
+            _METADATA_FILENAME,
+            artifact_label="metadata",
+        )
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeError as exc:
+            logger.warning(
+                "run_metadata_corrupt run_id=%s artifact_type=metadata error_code=%s",
+                canonical,
+                ErrorCode.RUN_METADATA_CORRUPT.value,
+            )
+            raise RunMetadataCorruptError(
+                "Run metadata artifact is corrupt",
+                run_id=canonical,
+            ) from exc
+        except OSError as exc:
+            logger.warning(
+                "run_artifact_storage_error run_id=%s artifact_type=metadata error_code=%s",
+                canonical,
+                ErrorCode.RUN_ARTIFACT_STORAGE_ERROR.value,
+            )
+            raise RunArtifactStorageError(
+                "Run artifact storage failed",
+                run_id=canonical,
+            ) from exc
+        try:
+            metadata = RunArtifactMetadata.model_validate_json(text)
+        except ValidationError as exc:
+            logger.warning(
+                "run_metadata_corrupt run_id=%s artifact_type=metadata error_code=%s",
+                canonical,
+                ErrorCode.RUN_METADATA_CORRUPT.value,
+            )
+            raise RunMetadataCorruptError(
+                "Run metadata artifact is corrupt",
+                run_id=canonical,
+            ) from exc
+        if metadata.run_id != canonical:
+            logger.warning(
+                "run_metadata_run_id_mismatch run_id=%s artifact_type=metadata error_code=%s",
+                canonical,
+                ErrorCode.RUN_METADATA_CORRUPT.value,
+            )
+            raise RunMetadataCorruptError(
+                "Run metadata artifact is corrupt",
+                run_id=canonical,
+            )
+        logger.debug(
+            "run_metadata_retrieved run_id=%s artifact_type=metadata status=%s",
+            canonical,
+            metadata.status,
+        )
+        return metadata
 
     def create_workspace(
         self,
