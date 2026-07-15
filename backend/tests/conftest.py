@@ -90,12 +90,15 @@ def make_real_app_settings(
     install_release_scenario(scenario_dir)
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
     return Settings(
         _env_file=None,
         project_root=project_root,
         sim_binary=REAL_BINARY,
         scenario_dir=scenario_dir,
         runs_dir=runs_dir,
+        sessions_dir=sessions_dir,
         sim_timeout_seconds=sim_timeout_seconds,
         max_concurrent_runs=max_concurrent_runs,
         log_level="INFO",
@@ -147,16 +150,19 @@ def make_valid_layout(root: Path) -> dict[str, Path]:
     sim_binary = project_root / "Simulator" / "build" / "sim_core.exe"
     scenario_dir = project_root / "scenarios"
     runs_dir = root / "runs"
+    sessions_dir = root / "sessions"
     sim_binary.parent.mkdir(parents=True, exist_ok=True)
     sim_binary.write_bytes(b"")
     scenario_dir.mkdir(parents=True, exist_ok=True)
     (scenario_dir / RELEASE_SCENARIO_FILENAME).write_text("{}", encoding="utf-8")
     runs_dir.mkdir(parents=True, exist_ok=True)
+    sessions_dir.mkdir(parents=True, exist_ok=True)
     return {
         "project_root": project_root,
         "sim_binary": sim_binary,
         "scenario_dir": scenario_dir,
         "runs_dir": runs_dir,
+        "sessions_dir": sessions_dir,
     }
 
 
@@ -167,6 +173,7 @@ def settings_from_layout(layout: dict[str, Path], **overrides: Any) -> Settings:
         "sim_binary": layout["sim_binary"],
         "scenario_dir": layout["scenario_dir"],
         "runs_dir": layout["runs_dir"],
+        "sessions_dir": layout["sessions_dir"],
         "sim_timeout_seconds": 30.0,
         "max_concurrent_runs": 2,
         "log_level": "INFO",

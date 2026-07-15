@@ -80,6 +80,7 @@ def test_relative_paths_resolve_independently_of_cwd(tmp_path: Path) -> None:
         "sim_binary": Path("../Simulator/build/sim_core.exe"),
         "scenario_dir": Path("../scenarios"),
         "runs_dir": tmp_path / "cwd_runs",
+        "sessions_dir": tmp_path / "cwd_sessions",
         "sim_timeout_seconds": 30.0,
         "max_concurrent_runs": 2,
         "log_level": "INFO",
@@ -98,6 +99,11 @@ def test_relative_paths_resolve_independently_of_cwd(tmp_path: Path) -> None:
     assert from_repo.sim_binary == from_backend.sim_binary == from_tmp.sim_binary
     assert from_repo.scenario_dir == from_backend.scenario_dir == from_tmp.scenario_dir
     assert from_repo.runs_dir == from_backend.runs_dir == from_tmp.runs_dir
+    assert (
+        from_repo.sessions_dir
+        == from_backend.sessions_dir
+        == from_tmp.sessions_dir
+    )
 
 
 def test_settings_from_kwargs_without_env_mutation(
@@ -227,6 +233,7 @@ def test_get_settings_cache_roundtrip(monkeypatch: pytest.MonkeyPatch, tmp_path:
     monkeypatch.setenv("ARES_SIM_BINARY", str(layout["sim_binary"]))
     monkeypatch.setenv("ARES_SCENARIO_DIR", str(layout["scenario_dir"]))
     monkeypatch.setenv("ARES_RUNS_DIR", str(layout["runs_dir"]))
+    monkeypatch.setenv("ARES_SESSIONS_DIR", str(layout["sessions_dir"]))
     monkeypatch.setenv("ARES_SIM_TIMEOUT_SECONDS", "30")
     monkeypatch.setenv("ARES_MAX_CONCURRENT_RUNS", "2")
     monkeypatch.setenv("ARES_LOG_LEVEL", "INFO")
@@ -235,3 +242,162 @@ def test_get_settings_cache_roundtrip(monkeypatch: pytest.MonkeyPatch, tmp_path:
     second = get_settings()
     assert first is second
     assert math.isclose(first.sim_timeout_seconds, 30.0)
+
+
+def test_phase3_defaults(tmp_path: Path) -> None:
+    layout = make_valid_layout(tmp_path)
+    settings = settings_from_layout(layout)
+    assert settings.replay_default_interval_ms == 250
+    assert settings.replay_min_interval_ms == 25
+    assert settings.replay_max_interval_ms == 60000
+    assert settings.max_replay_streams == 20
+    assert math.isclose(settings.sse_heartbeat_seconds, 15.0)
+    assert settings.sessions_dir == layout["sessions_dir"].resolve()
+
+
+def test_missing_sessions_directory_is_created(tmp_path: Path) -> None:
+    layout = make_valid_layout(tmp_path)
+    sessions_dir = tmp_path / "new_sessions"
+    assert not sessions_dir.exists()
+    settings = settings_from_layout(layout, sessions_dir=sessions_dir)
+    assert settings.sessions_dir.is_dir()
+    assert settings.sessions_dir == sessions_dir.resolve()
+
+
+def test_sessions_directory_is_writable(tmp_path: Path) -> None:
+    layout = make_valid_layout(tmp_path)
+    settings = settings_from_layout(layout)
+    probe = settings.sessions_dir / "post_create.txt"
+    probe.write_text("ok", encoding="utf-8")
+    assert probe.read_text(encoding="utf-8") == "ok"
+
+
+def test_relative_sessions_dir_independent_of_cwd(tmp_path: Path) -> None:
+    original = Path.cwd()
+    relative = Path("data") / f"sessions_cwd_probe_{tmp_path.name}"
+    target = (BACKEND_ROOT / relative).resolve()
+    if target.exists():
+        for child in target.iterdir():
+            child.unlink(missing_ok=True)
+        target.rmdir()
+
+    layout = make_valid_layout(tmp_path)
+    kwargs = {
+        "project_root": layout["project_root"],
+        "sim_binary": layout["sim_binary"],
+        "scenario_dir": layout["scenario_dir"],
+        "runs_dir": layout["runs_dir"],
+        "sessions_dir": relative,
+        "sim_timeout_seconds": 30.0,
+        "max_concurrent_runs": 2,
+        "log_level": "INFO",
+    }
+    try:
+        os.chdir(tmp_path)
+        settings = Settings(_env_file=None, **kwargs)
+        assert settings.sessions_dir == target
+        assert settings.sessions_dir.is_dir()
+    finally:
+        os.chdir(original)
+        if target.exists():
+            for child in target.iterdir():
+                child.unlink(missing_ok=True)
+            target.rmdir()
+
+def test_custom_sessions_path(tmp_path: Path) -> None:
+    layout = make_valid_layout(tmp_path)
+    custom = tmp_path / "custom_sessions"
+    settings = settings_from_layout(layout, sessions_dir=custom)
+    assert settings.sessions_dir == custom.resolve()
+    assert settings.sessions_dir.is_dir()
+
+
+def test_sessions_path_collides_with_file(tmp_path: Path) -> None:
+    layout = make_valid_layout(tmp_path)
+    as_file = tmp_path / "sessions_as_file"
+    as_file.write_text("x", encoding="utf-8")
+    with pytest.raises(ValidationError):
+        settings_from_layout(layout, sessions_dir=as_file)
+
+
+def test_unwritable_sessions_rejected_via_probe_mock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    layout = make_valid_layout(tmp_path)
+    sessions_dir = tmp_path / "locked_sessions"
+    sessions_dir.mkdir()
+
+    original_write_text = Path.write_text
+
+    def _fail_probe(self: Path, *args: object, **kwargs: object) -> None:
+        if (
+            self.parent == sessions_dir.resolve()
+            and self.name.startswith(".ares_write_probe_")
+        ):
+            raise OSError("simulated unwritable")
+        original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", _fail_probe)
+    with pytest.raises(ValidationError):
+        settings_from_layout(layout, sessions_dir=sessions_dir)
+
+
+def test_replay_interval_ordering_defaults(tmp_path: Path) -> None:
+    layout = make_valid_layout(tmp_path)
+    settings = settings_from_layout(layout)
+    assert (
+        settings.replay_min_interval_ms
+        <= settings.replay_default_interval_ms
+        <= settings.replay_max_interval_ms
+    )
+
+
+def test_replay_interval_custom_valid(tmp_path: Path) -> None:
+    layout = make_valid_layout(tmp_path)
+    settings = settings_from_layout(
+        layout,
+        replay_min_interval_ms=50,
+        replay_default_interval_ms=100,
+        replay_max_interval_ms=500,
+    )
+    assert settings.replay_default_interval_ms == 100
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"replay_min_interval_ms": 0},
+        {"replay_min_interval_ms": -1},
+        {"replay_default_interval_ms": 0},
+        {"replay_max_interval_ms": -5},
+        {"replay_min_interval_ms": 100, "replay_max_interval_ms": 50},
+        {
+            "replay_min_interval_ms": 100,
+            "replay_default_interval_ms": 50,
+            "replay_max_interval_ms": 200,
+        },
+        {
+            "replay_min_interval_ms": 100,
+            "replay_default_interval_ms": 300,
+            "replay_max_interval_ms": 200,
+        },
+    ],
+)
+def test_replay_interval_rejects_invalid(tmp_path: Path, kwargs: dict[str, int]) -> None:
+    layout = make_valid_layout(tmp_path)
+    with pytest.raises(ValidationError):
+        settings_from_layout(layout, **kwargs)
+
+
+@pytest.mark.parametrize("streams", [0, -1])
+def test_max_replay_streams_rejects_nonpositive(tmp_path: Path, streams: int) -> None:
+    layout = make_valid_layout(tmp_path)
+    with pytest.raises(ValidationError):
+        settings_from_layout(layout, max_replay_streams=streams)
+
+
+@pytest.mark.parametrize("heartbeat", [0, -1.0, float("nan"), float("inf")])
+def test_sse_heartbeat_rejects_invalid(tmp_path: Path, heartbeat: float) -> None:
+    layout = make_valid_layout(tmp_path)
+    with pytest.raises(ValidationError):
+        settings_from_layout(layout, sse_heartbeat_seconds=heartbeat)

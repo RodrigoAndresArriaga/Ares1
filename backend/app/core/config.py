@@ -1,4 +1,4 @@
-# load and validate Phase 1 settings
+# load and validate Phase 1/3 settings
 # resolve paths against backend package root, not CWD
 from __future__ import annotations
 
@@ -24,21 +24,26 @@ def resolve_against_backend(raw: Path | str) -> Path:
     return (BACKEND_ROOT / path).resolve()
 
 
-# create runs dir if needed and verify writability with a temp probe
-def ensure_writable_runs_dir(runs_dir: Path) -> None:
-    if runs_dir.exists() and runs_dir.is_file():
-        raise ValueError(f"ARES_RUNS_DIR exists as a file: {runs_dir}")
-    runs_dir.mkdir(parents=True, exist_ok=True)
-    if not runs_dir.is_dir():
-        raise ValueError(f"ARES_RUNS_DIR is not a directory: {runs_dir}")
+# create dir if needed and verify writability with a temp probe
+def ensure_writable_dir(path: Path, *, env_name: str) -> None:
+    if path.exists() and path.is_file():
+        raise ValueError(f"{env_name} exists as a file: {path}")
+    path.mkdir(parents=True, exist_ok=True)
+    if not path.is_dir():
+        raise ValueError(f"{env_name} is not a directory: {path}")
 
-    probe = runs_dir / f".ares_write_probe_{uuid.uuid4().hex}"
+    probe = path / f".ares_write_probe_{uuid.uuid4().hex}"
     try:
         probe.write_text("ok", encoding="utf-8")
     except OSError as exc:
-        raise ValueError(f"ARES_RUNS_DIR is not writable: {runs_dir}") from exc
+        raise ValueError(f"{env_name} is not writable: {path}") from exc
     finally:
         probe.unlink(missing_ok=True)
+
+
+# create runs dir if needed and verify writability with a temp probe
+def ensure_writable_runs_dir(runs_dir: Path) -> None:
+    ensure_writable_dir(runs_dir, env_name="ARES_RUNS_DIR")
 
 
 # path is under project_root (resolved containment)
@@ -48,6 +53,38 @@ def _is_under_project_root(candidate: Path, project_root: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+# strict positive integer from env/kwargs
+def _positive_strict_int(value: Any, *, env_name: str) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{env_name} must be a strict integer > 0")
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or any(ch in text for ch in ".eE"):
+            raise ValueError(f"{env_name} must be a strict integer > 0")
+        try:
+            value = int(text, 10)
+        except ValueError as exc:
+            raise ValueError(f"{env_name} must be a strict integer > 0") from exc
+    if type(value) is not int:
+        raise ValueError(f"{env_name} must be a strict integer > 0")
+    if value <= 0:
+        raise ValueError(f"{env_name} must be a strict integer > 0")
+    return value
+
+
+# finite float > 0 from env/kwargs
+def _positive_finite_float(value: Any, *, env_name: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"{env_name} must be a finite number > 0")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{env_name} must be a finite number > 0") from exc
+    if not math.isfinite(number) or number <= 0:
+        raise ValueError(f"{env_name} must be a finite number > 0")
+    return number
 
 
 class Settings(BaseSettings):
@@ -63,43 +100,50 @@ class Settings(BaseSettings):
     sim_binary: Path
     scenario_dir: Path
     runs_dir: Path
+    sessions_dir: Path = Field(default=Path("data/sessions"))
     sim_timeout_seconds: float = Field(default=30.0)
     max_concurrent_runs: int = Field(default=2)
+    replay_default_interval_ms: int = Field(default=250)
+    replay_min_interval_ms: int = Field(default=25)
+    replay_max_interval_ms: int = Field(default=60000)
+    max_replay_streams: int = Field(default=20)
+    sse_heartbeat_seconds: float = Field(default=15.0)
     log_level: str = Field(default="INFO")
 
     @field_validator("sim_timeout_seconds", mode="before")
     @classmethod
     def _validate_timeout(cls, value: Any) -> float:
-        if isinstance(value, bool):
-            raise ValueError("ARES_SIM_TIMEOUT_SECONDS must be a finite number > 0")
-        try:
-            number = float(value)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("ARES_SIM_TIMEOUT_SECONDS must be a finite number > 0") from exc
-        if not math.isfinite(number) or number <= 0:
-            raise ValueError("ARES_SIM_TIMEOUT_SECONDS must be a finite number > 0")
-        return number
+        return _positive_finite_float(value, env_name="ARES_SIM_TIMEOUT_SECONDS")
+
+    @field_validator("sse_heartbeat_seconds", mode="before")
+    @classmethod
+    def _validate_heartbeat(cls, value: Any) -> float:
+        return _positive_finite_float(value, env_name="ARES_SSE_HEARTBEAT_SECONDS")
 
     @field_validator("max_concurrent_runs", mode="before")
     @classmethod
     def _validate_concurrency(cls, value: Any) -> int:
-        if isinstance(value, bool):
-            raise ValueError("ARES_MAX_CONCURRENT_RUNS must be a strict integer > 0")
-        if isinstance(value, str):
-            text = value.strip()
-            if not text or any(ch in text for ch in ".eE"):
-                raise ValueError("ARES_MAX_CONCURRENT_RUNS must be a strict integer > 0")
-            try:
-                value = int(text, 10)
-            except ValueError as exc:
-                raise ValueError(
-                    "ARES_MAX_CONCURRENT_RUNS must be a strict integer > 0"
-                ) from exc
-        if type(value) is not int:
-            raise ValueError("ARES_MAX_CONCURRENT_RUNS must be a strict integer > 0")
-        if value <= 0:
-            raise ValueError("ARES_MAX_CONCURRENT_RUNS must be a strict integer > 0")
-        return value
+        return _positive_strict_int(value, env_name="ARES_MAX_CONCURRENT_RUNS")
+
+    @field_validator("max_replay_streams", mode="before")
+    @classmethod
+    def _validate_max_replay_streams(cls, value: Any) -> int:
+        return _positive_strict_int(value, env_name="ARES_MAX_REPLAY_STREAMS")
+
+    @field_validator("replay_default_interval_ms", mode="before")
+    @classmethod
+    def _validate_replay_default(cls, value: Any) -> int:
+        return _positive_strict_int(value, env_name="ARES_REPLAY_DEFAULT_INTERVAL_MS")
+
+    @field_validator("replay_min_interval_ms", mode="before")
+    @classmethod
+    def _validate_replay_min(cls, value: Any) -> int:
+        return _positive_strict_int(value, env_name="ARES_REPLAY_MIN_INTERVAL_MS")
+
+    @field_validator("replay_max_interval_ms", mode="before")
+    @classmethod
+    def _validate_replay_max(cls, value: Any) -> int:
+        return _positive_strict_int(value, env_name="ARES_REPLAY_MAX_INTERVAL_MS")
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -117,6 +161,7 @@ class Settings(BaseSettings):
         sim_binary = resolve_against_backend(self.sim_binary)
         scenario_dir = resolve_against_backend(self.scenario_dir)
         runs_dir = resolve_against_backend(self.runs_dir)
+        sessions_dir = resolve_against_backend(self.sessions_dir)
 
         if not project_root.exists() or not project_root.is_dir():
             raise ValueError(f"ARES_PROJECT_ROOT must be an existing directory: {project_root}")
@@ -134,11 +179,29 @@ class Settings(BaseSettings):
             )
 
         ensure_writable_runs_dir(runs_dir)
+        ensure_writable_dir(sessions_dir, env_name="ARES_SESSIONS_DIR")
+
+        if self.replay_min_interval_ms <= 0:
+            raise ValueError("ARES_REPLAY_MIN_INTERVAL_MS must be a strict integer > 0")
+        if self.replay_max_interval_ms < self.replay_min_interval_ms:
+            raise ValueError(
+                "ARES_REPLAY_MAX_INTERVAL_MS must be >= ARES_REPLAY_MIN_INTERVAL_MS"
+            )
+        if not (
+            self.replay_min_interval_ms
+            <= self.replay_default_interval_ms
+            <= self.replay_max_interval_ms
+        ):
+            raise ValueError(
+                "ARES_REPLAY_DEFAULT_INTERVAL_MS must lie within "
+                "ARES_REPLAY_MIN_INTERVAL_MS and ARES_REPLAY_MAX_INTERVAL_MS"
+            )
 
         object.__setattr__(self, "project_root", project_root)
         object.__setattr__(self, "sim_binary", sim_binary)
         object.__setattr__(self, "scenario_dir", scenario_dir)
         object.__setattr__(self, "runs_dir", runs_dir)
+        object.__setattr__(self, "sessions_dir", sessions_dir)
         return self
 
 
