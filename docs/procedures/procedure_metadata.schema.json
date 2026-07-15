@@ -1,0 +1,293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ares-1.local/schemas/procedure_metadata.schema.json",
+  "title": "ARES-1 Procedure Metadata",
+  "description": "Strict metadata contract for ARES-1 emergency procedure manuals. Simulator feasibility, physical state changes, crew physiology, action completion or abort, mission status, metrics, timeline, failure reasons, and outcome remain external to the procedure document and are owned exclusively by the C++ simulator. Do not author retrieval_score, rerank_score, outcome, valid_plan, metrics, failure_reasons, survival_probability, or mission_status as planner- or procedure-controlled metadata.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "procedure_id",
+    "procedure_version",
+    "title",
+    "filename",
+    "status",
+    "applicable_faults",
+    "applicable_scenarios",
+    "primary_actions",
+    "supporting_actions",
+    "prohibited_actions",
+    "telemetry_dependencies",
+    "source_classifications",
+    "evidence_references",
+    "release_configuration_dependencies",
+    "last_reviewed",
+    "supersedes",
+    "superseded_by"
+  ],
+  "properties": {
+    "procedure_id": {
+      "type": "string",
+      "description": "Stable procedure identifier.",
+      "pattern": "^ARES-PROC-(OXY|SOLAR|PWR|EVA|COMMS|CO2)-[0-9]{3}$"
+    },
+    "procedure_version": {
+      "type": "string",
+      "description": "SemVer MAJOR.MINOR.PATCH.",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "filename": {
+      "type": "string",
+      "description": "Canonical procedure Markdown filename.",
+      "enum": [
+        "oxygen_leak.md",
+        "solar_array_failure.md",
+        "power_rationing.md",
+        "eva_repair.md",
+        "comms_blackout.md",
+        "co2_scrubber_failure.md"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "description": "Procedure lifecycle status. Only ACTIVE is eligible for the active RAG corpus. ACTIVE_CANDIDATE files use PARTIAL_EVIDENCE until checklist completion.",
+      "enum": [
+        "DRAFT",
+        "READY_FOR_AUTHORING",
+        "PARTIAL_EVIDENCE",
+        "DEFERRED_SOURCE_REQUIRED",
+        "ACTIVE",
+        "SUPERSEDED"
+      ]
+    },
+    "applicable_faults": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "applicable_scenarios": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "primary_actions": {
+      "type": "array",
+      "description": "Exact serialized simulator action types. Empty only when status is PARTIAL_EVIDENCE or DEFERRED_SOURCE_REQUIRED and no dedicated primary action exists.",
+      "items": {
+        "$ref": "#/$defs/simulatorActionType"
+      },
+      "uniqueItems": true
+    },
+    "supporting_actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/simulatorActionType"
+      },
+      "uniqueItems": true
+    },
+    "prohibited_actions": {
+      "type": "array",
+      "description": "Inventory action types this procedure forbids recommending in context.",
+      "items": {
+        "$ref": "#/$defs/simulatorActionType"
+      },
+      "uniqueItems": true
+    },
+    "telemetry_dependencies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/telemetryDependency"
+      }
+    },
+    "source_classifications": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sourceClassification"
+      },
+      "uniqueItems": true
+    },
+    "evidence_references": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceReference"
+      }
+    },
+    "release_configuration_dependencies": {
+      "type": "array",
+      "description": "Untagged or release-scenario parameter paths described only as ARES_RELEASE_CONFIGURATION.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "last_reviewed": {
+      "type": "string",
+      "description": "ISO date YYYY-MM-DD.",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "supersedes": {
+      "type": "array",
+      "description": "Prior procedure_id values superseded by this document.",
+      "items": {
+        "type": "string",
+        "pattern": "^ARES-PROC-(OXY|SOLAR|PWR|EVA|COMMS|CO2)-[0-9]{3}$"
+      },
+      "uniqueItems": true
+    },
+    "superseded_by": {
+      "type": "array",
+      "description": "Replacement procedure_id values.",
+      "items": {
+        "type": "string",
+        "pattern": "^ARES-PROC-(OXY|SOLAR|PWR|EVA|COMMS|CO2)-[0-9]{3}$"
+      },
+      "uniqueItems": true
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional non-normative authoring notes."
+    },
+    "domain_aliases": {
+      "type": "array",
+      "description": "Optional display/prose labels. Must not replace exact action or telemetry names.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "chunk_boundary_notes": {
+      "type": "array",
+      "description": "Optional chunking review notes for the future RAG pipeline.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "simulatorActionType": {
+      "type": "string",
+      "description": "Exact serialized simulator action type.",
+      "enum": [
+        "reduce_power_load",
+        "isolate_module",
+        "oxygen_rationing",
+        "repair_solar_array",
+        "delay_rover_use",
+        "send_emergency_packet"
+      ]
+    },
+    "sourceClassification": {
+      "type": "string",
+      "enum": [
+        "NASA_STANDARD",
+        "NASA_REFERENCE",
+        "DERIVED_PHYSICS",
+        "ARES_ASSUMPTION",
+        "ARES_RELEASE_CONFIGURATION"
+      ]
+    },
+    "conditionRole": {
+      "type": "string",
+      "enum": [
+        "entry",
+        "monitoring",
+        "abort",
+        "success"
+      ]
+    },
+    "telemetryDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "json_location",
+        "unit",
+        "condition_roles"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact JSON field name from the serialized contract."
+        },
+        "json_location": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Nested JSON path (e.g. telemetry_history[].habitat, metrics, root)."
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "condition_roles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/conditionRole"
+          }
+        },
+        "display_label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional human label; never replaces exact field name."
+        }
+      }
+    },
+    "evidenceReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id",
+        "classification",
+        "source_title",
+        "locator",
+        "supports"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "pattern": "^EVID-(NASA_STD|NASA_REF|DER_PHYS|ARES_ASM|ARES_REL)-[0-9]{3}$"
+        },
+        "classification": {
+          "$ref": "#/$defs/sourceClassification"
+        },
+        "source_title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supports": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Supported claim / use of this evidence reference."
+        },
+        "url": {
+          "type": "string",
+          "description": "Optional URL; empty string allowed when repository-local only."
+        }
+      }
+    },
+    "sectionId": {
+      "type": "string",
+      "description": "Section identifier pattern for procedure authors and chunk metadata.",
+      "pattern": "^ARES-PROC-(OXY|SOLAR|PWR|EVA|COMMS|CO2)-[0-9]{3}-SEC-[0-9]{3}$"
+    },
+    "chunkId": {
+      "type": "string",
+      "description": "Chunk identifier pattern for future RAG chunk metadata.",
+      "pattern": "^ARES-PROC-(OXY|SOLAR|PWR|EVA|COMMS|CO2)-[0-9]{3}-v[0-9]+\\.[0-9]+\\.[0-9]+-CH-[0-9]{3}$"
+    }
+  }
+}

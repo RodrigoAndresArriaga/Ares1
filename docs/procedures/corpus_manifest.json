@@ -1,0 +1,36 @@
+{
+  "manifest_version": "1.0.0",
+  "procedure_root": "docs/procedures/manuals",
+  "source_register": "docs/procedures/sources/NASA_SOURCE_REGISTER.md",
+  "schema": "docs/procedures/procedure_metadata.schema.json",
+  "active_candidates": [
+    {
+      "procedure_id": "ARES-PROC-OXY-001",
+      "filename": "oxygen_leak.md"
+    },
+    {
+      "procedure_id": "ARES-PROC-SOLAR-001",
+      "filename": "solar_array_failure.md"
+    },
+    {
+      "procedure_id": "ARES-PROC-PWR-001",
+      "filename": "power_rationing.md"
+    },
+    {
+      "procedure_id": "ARES-PROC-EVA-001",
+      "filename": "eva_repair.md"
+    }
+  ],
+  "excluded": [
+    {
+      "procedure_id": "ARES-PROC-COMMS-001",
+      "filename": "comms_blackout.md",
+      "reason": "No standalone blackout fault and no serialized communication-window state."
+    },
+    {
+      "procedure_id": "ARES-PROC-CO2-001",
+      "filename": "co2_scrubber_failure.md",
+      "reason": "No standalone scrubber-failure fault and no direct scrubber-repair action."
+    }
+  ]
+}
