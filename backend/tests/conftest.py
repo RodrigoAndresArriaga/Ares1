@@ -3,7 +3,9 @@
 # Section 10/11 release-scenario helpers for registry and run-store tests
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -22,14 +24,50 @@ SCENARIOS_DIR = REPO_ROOT / "scenarios"
 RELEASE_SCENARIO_ID = "mars_hab_atmosphere_solar_failure"
 RELEASE_SCENARIO_PATH = SCENARIOS_DIR / RELEASE_SCENARIO_FILENAME
 SHARED_SIM_RESULT_PATH = REPO_ROOT / "results" / "sim_result.json"
+REAL_BINARY = REPO_ROOT / "Simulator" / "build" / "sim_core.exe"
 
 BASELINE_SHA256 = "C9EAE8F26A37E6D3587038A49984548C0BFF2DEE8367D91C29CFEB76C13A4A79"
 VALID_RESULT_SHA256 = "A2662DE223878CCB03723063DF5987D933251547B4D8F3FB96499CB3B2EB112C"
 INVALID_RESULT_SHA256 = "7D9D09FCAC6A0D504F4EE8A9AF6AC89A837E3345B258940CB83A0C1A0AA05CC1"
 
+FIXTURE_SHA256_BY_NAME = {
+    "baseline_result.json": BASELINE_SHA256,
+    "valid_plan_result.json": VALID_RESULT_SHA256,
+    "invalid_plan_result.json": INVALID_RESULT_SHA256,
+}
+
 
 def _load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+# uppercase SHA-256 of file bytes
+def sha256_hex_upper(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest().upper()
+
+
+# true when frozen release executable exists and is non-empty
+def real_binary_available() -> bool:
+    return REAL_BINARY.is_file() and REAL_BINARY.stat().st_size > 0
+
+
+# skip unless binary present; fail hard when release gate requires it
+def require_real_simulator() -> None:
+    if real_binary_available():
+        return
+    if os.environ.get("ARES_REQUIRE_REAL_SIMULATOR") == "1":
+        pytest.fail(
+            "ARES_REQUIRE_REAL_SIMULATOR=1 but frozen simulator "
+            f"executable is missing: {REAL_BINARY}",
+        )
+    pytest.skip("frozen simulator executable not present")
 
 
 # copy exact release scenario bytes into an isolated scenario directory
@@ -38,6 +76,30 @@ def install_release_scenario(scenario_dir: Path) -> Path:
     dest = scenario_dir / RELEASE_SCENARIO_FILENAME
     shutil.copyfile(RELEASE_SCENARIO_PATH, dest)
     return dest
+
+
+# isolated Settings wired to the frozen release binary under tmp_path
+def make_real_app_settings(
+    tmp_path: Path,
+    *,
+    max_concurrent_runs: int = 1,
+    sim_timeout_seconds: float = 120.0,
+) -> Settings:
+    project_root = tmp_path / "project"
+    scenario_dir = project_root / "scenarios"
+    install_release_scenario(scenario_dir)
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    return Settings(
+        _env_file=None,
+        project_root=project_root,
+        sim_binary=REAL_BINARY,
+        scenario_dir=scenario_dir,
+        runs_dir=runs_dir,
+        sim_timeout_seconds=sim_timeout_seconds,
+        max_concurrent_runs=max_concurrent_runs,
+        log_level="INFO",
+    )
 
 
 @pytest.fixture(scope="session")

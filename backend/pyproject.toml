@@ -32,6 +32,10 @@ include = ["app*"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = ["."]
+markers = [
+    "integration: HTTP/service integration tests",
+    "real_simulator: requires frozen Simulator/build/sim_core.exe",
+]
 
 [tool.ruff]
 line-length = 100

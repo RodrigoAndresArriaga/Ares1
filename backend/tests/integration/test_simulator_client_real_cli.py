@@ -10,24 +10,24 @@ from app.schemas.result import OutcomeStatus
 from app.services.run_store import RunStore
 from app.services.simulator_client import SimulatorClient
 from tests.conftest import (
+    REAL_BINARY,
     RELEASE_SCENARIO_PATH,
-    REPO_ROOT,
     SHARED_SIM_RESULT_PATH,
     make_baseline_request,
     make_plan_request,
+    require_real_simulator,
 )
 
-REAL_BINARY = REPO_ROOT / "Simulator" / "build" / "sim_core.exe"
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.real_simulator,
+]
 
 
-def _real_binary_available() -> bool:
-    return REAL_BINARY.is_file() and REAL_BINARY.stat().st_size > 0
+@pytest.fixture(autouse=True)
+def _require_binary() -> None:
+    require_real_simulator()
 
-
-pytestmark = pytest.mark.skipif(
-    not _real_binary_available(),
-    reason="frozen simulator executable not present",
-)
 
 
 @pytest.fixture
