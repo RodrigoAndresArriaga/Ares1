@@ -390,6 +390,37 @@ class SessionStore:
             return target.is_relative_to(resolved_dir) and target.is_file()
         return json_path.is_file()
 
+    # return sorted canonical UUID session directory names only
+    def list_session_ids(self) -> tuple[str, ...]:
+        try:
+            entries = list(self._sessions_root.iterdir())
+        except OSError as exc:
+            logger.error("session_list_failed")
+            raise MissionSessionStorageError(
+                "Failed to enumerate mission sessions",
+            ) from exc
+
+        accepted: list[str] = []
+        for entry in entries:
+            name = entry.name
+            try:
+                parsed = uuid.UUID(name)
+            except (ValueError, AttributeError, TypeError):
+                continue
+            canonical = str(parsed)
+            if name != canonical:
+                continue
+            try:
+                if entry.is_symlink():
+                    continue
+                if not entry.is_dir():
+                    continue
+            except OSError:
+                continue
+            accepted.append(canonical)
+
+        return tuple(sorted(accepted))
+
     # per-session asyncio lock for in-process transition serialization
     @asynccontextmanager
     async def lock_session(self, session_id: str) -> AsyncIterator[None]:

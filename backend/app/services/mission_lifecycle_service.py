@@ -16,12 +16,15 @@ import asyncio
 import logging
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app.core.errors import (
     AresBackendError,
     BaselineTelemetryEmptyError,
     MissionSessionConflictError,
+    MissionSessionCorruptError,
+    MissionSessionNotFoundError,
     MissionSessionStorageError,
     ReplayIntervalInvalidError,
 )
@@ -39,6 +42,16 @@ from app.services.session_store import SessionStore
 from app.services.simulation_service import SimulationService
 
 logger = logging.getLogger("ares.mission_lifecycle")
+
+
+@dataclass(frozen=True, slots=True)
+class ReconciliationSummary:
+    # startup recovery counts for interrupted TRIGGERING sessions
+    sessions_seen: int
+    triggering_recovered: int
+    unchanged: int
+    corrupt: int
+    conflicts: int
 
 
 # return current UTC as timezone-aware datetime
@@ -115,6 +128,104 @@ class MissionLifecycleService:
     # return exact persisted session without mutation or replay reconciliation
     def get_session(self, session_id: str) -> MissionSession:
         return self._session_store.read_session(session_id)
+
+    # recover stale TRIGGERING sessions left by an interrupted process
+    async def reconcile_interrupted_sessions(self) -> ReconciliationSummary:
+        session_ids = self._session_store.list_session_ids()
+        sessions_seen = 0
+        triggering_recovered = 0
+        unchanged = 0
+        corrupt = 0
+        conflicts = 0
+
+        for session_id in session_ids:
+            sessions_seen += 1
+            async with self._session_store.lock_session(session_id):
+                try:
+                    session = self._session_store.read_session(session_id)
+                except (
+                    MissionSessionCorruptError,
+                    MissionSessionNotFoundError,
+                    MissionSessionStorageError,
+                ):
+                    logger.error(
+                        "mission_reconcile_corrupt session_id=%s code=%s",
+                        session_id,
+                        ErrorCode.MISSION_SESSION_CORRUPT.value,
+                    )
+                    corrupt += 1
+                    continue
+
+                if session.status != MissionSessionStatus.TRIGGERING:
+                    unchanged += 1
+                    continue
+
+                now = self._require_aware_now()
+                recovered = session.model_copy(
+                    update={
+                        "status": MissionSessionStatus.ERROR,
+                        "updated_at": now,
+                        "error_code": ErrorCode.MISSION_TRIGGER_INTERRUPTED.value,
+                    }
+                )
+                try:
+                    self._session_store.replace_session(
+                        recovered,
+                        expected_status=MissionSessionStatus.TRIGGERING,
+                        expected_updated_at=session.updated_at,
+                    )
+                except MissionSessionConflictError:
+                    try:
+                        current = self._session_store.read_session(session_id)
+                    except (
+                        MissionSessionCorruptError,
+                        MissionSessionNotFoundError,
+                        MissionSessionStorageError,
+                    ):
+                        logger.error(
+                            "mission_reconcile_corrupt session_id=%s code=%s",
+                            session_id,
+                            ErrorCode.MISSION_SESSION_CORRUPT.value,
+                        )
+                        corrupt += 1
+                        continue
+                    conflicts += 1
+                    logger.info(
+                        "mission_reconcile_conflict session_id=%s "
+                        "actual_status=%s",
+                        session_id,
+                        current.status.value,
+                    )
+                    continue
+
+                triggering_recovered += 1
+                logger.info(
+                    "mission_transition session_id=%s scenario_id=%s "
+                    "old_status=%s new_status=%s error_code=%s",
+                    session.session_id,
+                    session.scenario_id,
+                    MissionSessionStatus.TRIGGERING.value,
+                    MissionSessionStatus.ERROR.value,
+                    ErrorCode.MISSION_TRIGGER_INTERRUPTED.value,
+                )
+
+        summary = ReconciliationSummary(
+            sessions_seen=sessions_seen,
+            triggering_recovered=triggering_recovered,
+            unchanged=unchanged,
+            corrupt=corrupt,
+            conflicts=conflicts,
+        )
+        logger.info(
+            "mission_reconcile_summary sessions_seen=%s "
+            "triggering_recovered=%s unchanged=%s corrupt=%s conflicts=%s",
+            summary.sessions_seen,
+            summary.triggering_recovered,
+            summary.unchanged,
+            summary.corrupt,
+            summary.conflicts,
+        )
+        return summary
 
     # transition READY -> TRIGGERING -> BASELINE_READY under per-session lock
     async def trigger_accident(self, session_id: str) -> AccidentTriggerResponse:

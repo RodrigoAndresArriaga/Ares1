@@ -66,6 +66,17 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         capacity=settings.max_replay_streams,
     )
 
+    summary = await app.state.mission_lifecycle_service.reconcile_interrupted_sessions()
+    logger.info(
+        "startup reconciliation complete sessions_seen=%s "
+        "triggering_recovered=%s unchanged=%s corrupt=%s conflicts=%s",
+        summary.sessions_seen,
+        summary.triggering_recovered,
+        summary.unchanged,
+        summary.corrupt,
+        summary.conflicts,
+    )
+
     if readiness.ready:
         logger.info("startup readiness ok reason_code=%s", readiness.reason_code)
     else:
