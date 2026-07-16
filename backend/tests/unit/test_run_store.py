@@ -191,9 +191,41 @@ def test_sample_plan_artifact(
     expected = RecoveryPlan.model_validate(sample_plan_data).model_dump(
         mode="json",
         exclude_unset=True,
+        exclude_none=True,
     )
     assert loaded == expected
     assert RELEASE_SCENARIO_PATH.exists()
+
+
+def test_plan_artifact_omits_explicit_null_optional_fields(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    request = SimulationRunRequest.model_validate(
+        {
+            "scenario_id": RELEASE_SCENARIO_ID,
+            "plan": {
+                "plan_id": "planner-null-test",
+                "summary": "omit null optional fields for simulator wire format",
+                "actions": [
+                    {
+                        "type": "reduce_power_load",
+                        "start_min": 5,
+                        "percent": 0.3,
+                        "load_groups": ["nonessential"],
+                        "module": None,
+                        "assigned_crew_ids": None,
+                    },
+                ],
+                "rationale": "regression",
+                "expected_risk": "HIGH",
+                "constraints_checked": ["power_margin"],
+            },
+        },
+    )
+    workspace = store.create_workspace(request, RELEASE_SCENARIO_PATH)
+    loaded = json.loads(workspace.plan_path.read_text(encoding="utf-8"))
+    action = loaded["actions"][0]
+    assert "assigned_crew_ids" not in action
+    assert "module" not in action
 
 
 def test_invalid_plan_artifact(
@@ -210,6 +242,7 @@ def test_invalid_plan_artifact(
     expected = RecoveryPlan.model_validate(invalid_plan_data).model_dump(
         mode="json",
         exclude_unset=True,
+        exclude_none=True,
     )
     assert loaded == expected
     assert source_plan.read_bytes() == before

@@ -82,7 +82,9 @@ def _canonical_json(value: object) -> str:
 
 # SHA-256 of canonical RecoveryPlan JSON submitted to SimulationService
 def canonical_plan_sha256(plan: RecoveryPlan) -> str:
-    payload = _canonical_json(plan.model_dump(mode="json")).encode("utf-8")
+    payload = _canonical_json(
+        plan.model_dump(mode="json", exclude_none=True),
+    ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 

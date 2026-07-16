@@ -49,6 +49,9 @@ def test_prompt_fidelity(
     assert ctx.baseline_outcome.value in package.user_prompt
     assert "critical_repair_impossible" in package.user_prompt
     assert str(ctx.current_telemetry.simulation_time_min) in package.user_prompt
+    assert "planning_schedule_origin_minute" in package.user_prompt
+    assert "available_crew_ids" in package.user_prompt
+    assert "simulation minute zero" in package.user_prompt
     assert "plan_id" in package.user_prompt
     assert "actions" in package.user_prompt
     for action_type in ActionType:

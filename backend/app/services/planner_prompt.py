@@ -38,6 +38,9 @@ Return exactly one JSON object and nothing else.
 The JSON object must match the RecoveryPlan schema exactly.
 Use only the approved action types and fields from the allowed action contract.
 Never invent modules, resources, crew, tools, procedures, or action types.
+When retrieved evidence supports multiple complementary approved actions, include each
+structurally valid action the evidence grounds; do not omit primary recovery actions
+that evidence explicitly supports.
 Never claim the plan is valid, successful, stabilized, safe, or simulator-approved.
 Never output simulator-owned fields such as outcome, valid_plan, metrics,
 failure_reasons, mission_status, survival_probability, or simulation_result.
@@ -52,6 +55,19 @@ _OUTPUT_REQUIREMENTS = """\
 Return exactly one JSON object matching the RecoveryPlan schema.
 Do not wrap the JSON in Markdown or code fences.
 Do not include any text before or after the JSON object.
+Schedule every action start_min from simulation minute zero (0), not from
+current_telemetry.simulation_time_min.
+Prefer start_min values near zero (typically 0-2) so recovery begins at mission start.
+When evidence allowed_actions include a primary recovery action type, include it if
+structurally valid.
+Use crew identifiers only from available_crew_ids in mission context for crew or EVA fields.
+When baseline_failure_reasons includes critical_repair_impossible, include evidence-grounded
+isolate_module or repair_solar_array actions; do not rely on send_emergency_packet alone.
+When evidence supports isolate_module for atmosphere containment, schedule it at start_min 0
+before repair_solar_array or send_emergency_packet.
+When evidence supports isolate_module, reduce_power_load, and repair_solar_array together,
+you MUST include all three in the plan; schedule isolate_module and reduce_power_load at
+start_min 0 and repair_solar_array at start_min 1 with eva_crew_id from available_crew_ids.
 """
 
 
@@ -89,7 +105,10 @@ def _action_contract() -> dict[str, object]:
             "type": "integer",
             "required": True,
             "unit": "minutes",
-            "description": "Simulation minute when the action starts.",
+            "description": (
+                "Simulation minute from mission start (0). Candidate plans are "
+                "evaluated from minute zero, not from current telemetry elapsed time."
+            ),
         },
         "duration_min": {
             "type": "integer",
@@ -185,12 +204,16 @@ def _evidence_item(match_index: int, match: Any) -> dict[str, object]:
 def _mission_context_json(input_data: PlannerPromptInput) -> dict[str, object]:
     ctx = input_data.mission_context
     return {
+        "available_crew_ids": [
+            crew.crew_id for crew in ctx.current_telemetry.crew
+        ],
         "baseline_failure_reasons": list(ctx.baseline_failure_reasons),
         "baseline_metrics": ctx.baseline_metrics.model_dump(mode="json"),
         "baseline_outcome": ctx.baseline_outcome.value,
         "baseline_run_id": ctx.baseline_run_id,
         "current_sample_index": ctx.current_sample_index,
         "current_telemetry": ctx.current_telemetry.model_dump(mode="json"),
+        "planning_schedule_origin_minute": 0,
         "scenario_id": ctx.scenario_id,
         "session_id": ctx.session_id,
         "telemetry_sample_count": ctx.telemetry_sample_count,

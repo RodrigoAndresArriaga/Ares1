@@ -381,6 +381,7 @@ class RunStore:
                 plan_payload = request.plan.model_dump(
                     mode="json",
                     exclude_unset=True,
+                    exclude_none=True,
                 )
                 write_json_atomic(workspace.plan_path, plan_payload)
                 plan_sha256 = sha256_file(workspace.plan_path)
@@ -458,6 +459,7 @@ class RunStore:
             payload["plan"] = request.plan.model_dump(
                 mode="json",
                 exclude_unset=True,
+                exclude_none=True,
             )
         try:
             write_json_atomic(dest, payload)

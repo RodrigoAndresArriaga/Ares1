@@ -39,6 +39,7 @@ markers = [
     "integration: HTTP/service integration tests",
     "real_simulator: requires frozen Simulator/build/sim_core.exe",
     "real_nim: requires ARES_NVIDIA_API_KEY and hosted NVIDIA NIM access",
+    "real_planning: requires NVIDIA key, Phase 4 embedding index, and frozen simulator for full planning E2E",
 ]
 
 [tool.ruff]

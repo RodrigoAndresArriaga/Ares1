@@ -166,6 +166,7 @@ class NvidiaNimPlannerProvider:
             prompt_hash=prompt.prompt_sha256,
             evidence_chunk_count=len(prompt.evidence_chunk_ids),
         )
+        seed = 0 if self._temperature == 0.0 else None
         try:
             completion = await asyncio.to_thread(
                 self._client.create_chat_completion,
@@ -174,6 +175,7 @@ class NvidiaNimPlannerProvider:
                 temperature=self._temperature,
                 max_tokens=self._max_tokens,
                 stream=False,
+                seed=seed,
             )
         except Exception as exc:
             log_run_event(

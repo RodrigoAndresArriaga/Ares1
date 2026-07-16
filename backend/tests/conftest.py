@@ -25,6 +25,11 @@ RELEASE_SCENARIO_ID = "mars_hab_atmosphere_solar_failure"
 RELEASE_SCENARIO_PATH = SCENARIOS_DIR / RELEASE_SCENARIO_FILENAME
 SHARED_SIM_RESULT_PATH = REPO_ROOT / "results" / "sim_result.json"
 REAL_BINARY = REPO_ROOT / "Simulator" / "build" / "sim_core.exe"
+TRUSTED_EMBEDDING_INDEX_PATH = (
+    BACKEND_ROOT / "data" / "retrieval" / "procedure_embedding_index.json"
+)
+REAL_PROCEDURE_MANIFEST = REPO_ROOT / "docs" / "procedures" / "corpus_manifest.json"
+REAL_PROCEDURE_MANUALS = REPO_ROOT / "docs" / "procedures" / "manuals"
 
 BASELINE_SHA256 = "C9EAE8F26A37E6D3587038A49984548C0BFF2DEE8367D91C29CFEB76C13A4A79"
 VALID_RESULT_SHA256 = "A2662DE223878CCB03723063DF5987D933251547B4D8F3FB96499CB3B2EB112C"
@@ -116,6 +121,48 @@ def require_real_nim() -> None:
     pytest.skip("NVIDIA API key not configured")
 
 
+# return one safe reason when the trusted Phase 4 index is unavailable
+def real_planning_index_available() -> str | None:
+    if not TRUSTED_EMBEDDING_INDEX_PATH.is_file():
+        return "Phase 4 embedding index not found at configured path"
+    try:
+        from app.core.config import DEFAULT_EMBED_DIMENSIONS, DEFAULT_NVIDIA_EMBED_MODEL_ID
+        from app.schemas.embedding import EmbeddingModelDescriptor
+        from app.services.procedure_embedding_index_store import ProcedureEmbeddingIndexStore
+
+        embed_model = EmbeddingModelDescriptor(
+            provider="nvidia",
+            model_id=DEFAULT_NVIDIA_EMBED_MODEL_ID,
+            model_revision=None,
+            dimensions=DEFAULT_EMBED_DIMENSIONS,
+        )
+        store = ProcedureEmbeddingIndexStore(index_path=TRUSTED_EMBEDDING_INDEX_PATH)
+        store.load_compatible(expected_model=embed_model)
+    except Exception:
+        return "Phase 4 embedding index missing or incompatible with configured embed model"
+    return None
+
+
+# skip unless simulator, NIM key, and compatible index are present
+def require_real_planning() -> None:
+    fail_hard = os.environ.get("ARES_REQUIRE_REAL_PLANNING") == "1"
+    if not real_binary_available():
+        message = "frozen simulator executable not present"
+        if fail_hard:
+            pytest.fail(f"ARES_REQUIRE_REAL_PLANNING=1 but {message}")
+        pytest.skip(message)
+    if not real_nim_available():
+        message = "NVIDIA API key not configured"
+        if fail_hard:
+            pytest.fail(f"ARES_REQUIRE_REAL_PLANNING=1 but {message}")
+        pytest.skip(message)
+    index_reason = real_planning_index_available()
+    if index_reason is not None:
+        if fail_hard:
+            pytest.fail(f"ARES_REQUIRE_REAL_PLANNING=1 but {index_reason}")
+        pytest.skip(index_reason)
+
+
 # copy exact release scenario bytes into an isolated scenario directory
 def install_release_scenario(scenario_dir: Path) -> Path:
     scenario_dir.mkdir(parents=True, exist_ok=True)
@@ -148,6 +195,45 @@ def make_real_app_settings(
         sim_timeout_seconds=sim_timeout_seconds,
         max_concurrent_runs=max_concurrent_runs,
         log_level="INFO",
+    )
+
+
+# isolated Settings for real planning E2E with trusted Phase 4 index
+def make_real_planning_app_settings(
+    tmp_path: Path,
+    *,
+    api_key: str,
+    max_concurrent_runs: int = 1,
+    sim_timeout_seconds: float = 120.0,
+) -> Settings:
+    from pydantic import SecretStr
+
+    project_root = tmp_path / "project"
+    scenario_dir = project_root / "scenarios"
+    install_release_scenario(scenario_dir)
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+    planning_dir = tmp_path / "planning"
+    planning_dir.mkdir()
+    return Settings(
+        _env_file=None,
+        project_root=project_root,
+        sim_binary=REAL_BINARY,
+        scenario_dir=scenario_dir,
+        runs_dir=runs_dir,
+        sessions_dir=sessions_dir,
+        planning_attempts_dir=planning_dir,
+        sim_timeout_seconds=sim_timeout_seconds,
+        max_concurrent_runs=max_concurrent_runs,
+        log_level="INFO",
+        nvidia_api_key=SecretStr(api_key),
+        procedure_embedding_index_path=TRUSTED_EMBEDDING_INDEX_PATH,
+        procedure_manifest_path=REAL_PROCEDURE_MANIFEST,
+        procedure_manuals_root=REAL_PROCEDURE_MANUALS,
+        retrieval_rerank_candidate_count=40,
+        planner_retrieval_top_k=10,
     )
 
 

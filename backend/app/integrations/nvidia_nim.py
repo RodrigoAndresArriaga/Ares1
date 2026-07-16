@@ -186,6 +186,7 @@ class NvidiaNimClient:
         temperature: float,
         max_tokens: int,
         stream: bool = False,
+        seed: int | None = None,
     ) -> ChatCompletionResult:
         payload: dict[str, object] = {
             "model": model_id,
@@ -194,6 +195,8 @@ class NvidiaNimClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if seed is not None:
+            payload["seed"] = seed
         url = f"{self._embed_base_url}/chat/completions"
         raw = self._request_json(method="POST", url=url, payload=payload)
         return self._parse_chat_completion(raw)
