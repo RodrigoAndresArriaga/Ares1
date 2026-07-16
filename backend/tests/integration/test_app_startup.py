@@ -70,6 +70,10 @@ def test_docs_and_openapi_available(valid_settings: Settings) -> None:
         assert "/api/missions/{session_id}/replay" in paths
         assert "/api/missions/{session_id}/telemetry" in paths
         assert "/api/missions/{session_id}/stream" in paths
+        assert "/api/missions/{session_id}/plan" in paths
+        plan_post = paths["/api/missions/{session_id}/plan"]["post"]
+        assert "requestBody" not in plan_post
+        assert "200" in plan_post["responses"]
         assert payload["info"]["title"] == "ARES-1 Phase 1 Backend"
         assert payload["info"]["version"] == "0.1.0"
         description = payload["info"].get("description", "").lower()
@@ -98,3 +102,47 @@ def test_no_wildcard_cors_middleware(valid_settings: Settings) -> None:
     for middleware in app.user_middleware:
         options = getattr(middleware, "kwargs", {}) or {}
         assert options.get("allow_origins") != ["*"]
+
+
+def test_planning_unavailable_without_prerequisites(valid_settings: Settings) -> None:
+    app = create_app(settings_override=valid_settings)
+    with TestClient(app) as client:
+        health = client.get("/api/health")
+        assert health.status_code == 200
+        assert app.state.mission_plan_simulation_service is None
+        assert app.state.mission_planning_service is None
+
+
+def test_planning_lifespan_wires_with_provider_override(
+    valid_settings: Settings,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from app.services.mission_plan_simulation_service import MissionPlanSimulationService
+    from app.services.mission_planning_service import MissionPlanningService
+    from app.services.planning_attempt_store import PlanningAttemptStore
+    from app.services.planning_validation_store import PlanningValidationStore
+    from tests.conftest import make_multi_action_retrieval_result
+    from tests.unit.test_mission_planning_service import FakeRetrievalService
+
+    retrieval = FakeRetrievalService(result=make_multi_action_retrieval_result())
+    provider = AsyncMock()
+    app = create_app(
+        settings_override=valid_settings,
+        procedure_retrieval_service_override=retrieval,
+        planner_provider_override=provider,
+    )
+    with TestClient(app) as client:
+        client.get("/api/health")
+        assert isinstance(app.state.planning_attempt_store, PlanningAttemptStore)
+        assert isinstance(app.state.planning_validation_store, PlanningValidationStore)
+        assert isinstance(app.state.mission_planning_service, MissionPlanningService)
+        assert isinstance(
+            app.state.mission_plan_simulation_service,
+            MissionPlanSimulationService,
+        )
+        assert app.state.run_store is app.state.mission_plan_simulation_service._run_store
+        assert (
+            app.state.simulation_service
+            is app.state.mission_plan_simulation_service._simulation_service
+        )

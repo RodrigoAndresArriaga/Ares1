@@ -197,18 +197,21 @@ def make_valid_layout(root: Path) -> dict[str, Path]:
     scenario_dir = project_root / "scenarios"
     runs_dir = root / "runs"
     sessions_dir = root / "sessions"
+    planning_dir = root / "planning"
     sim_binary.parent.mkdir(parents=True, exist_ok=True)
     sim_binary.write_bytes(b"")
     scenario_dir.mkdir(parents=True, exist_ok=True)
     (scenario_dir / RELEASE_SCENARIO_FILENAME).write_text("{}", encoding="utf-8")
     runs_dir.mkdir(parents=True, exist_ok=True)
     sessions_dir.mkdir(parents=True, exist_ok=True)
+    planning_dir.mkdir(parents=True, exist_ok=True)
     return {
         "project_root": project_root,
         "sim_binary": sim_binary,
         "scenario_dir": scenario_dir,
         "runs_dir": runs_dir,
         "sessions_dir": sessions_dir,
+        "planning_dir": planning_dir,
     }
 
 
@@ -220,6 +223,7 @@ def settings_from_layout(layout: dict[str, Path], **overrides: Any) -> Settings:
         "scenario_dir": layout["scenario_dir"],
         "runs_dir": layout["runs_dir"],
         "sessions_dir": layout["sessions_dir"],
+        "planning_attempts_dir": layout.get("planning_dir", layout["runs_dir"].parent / "planning"),
         "sim_timeout_seconds": 30.0,
         "max_concurrent_runs": 2,
         "log_level": "INFO",
@@ -461,6 +465,12 @@ def make_planning_attempt_store(tmp_path: Path) -> Any:
     from app.services.planning_attempt_store import PlanningAttemptStore
 
     return PlanningAttemptStore(make_planning_root(tmp_path))
+
+
+def make_planning_validation_store(tmp_path: Path) -> Any:
+    from app.services.planning_validation_store import PlanningValidationStore
+
+    return PlanningValidationStore(make_planning_root(tmp_path))
 
 
 def _make_procedure_chunk(

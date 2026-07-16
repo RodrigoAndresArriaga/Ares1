@@ -7,19 +7,21 @@ from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.sse import ReplayStreamLimiter, generate_replay_stream
-from app.core.errors import ReplayStreamLimitError
+from app.core.errors import PlanningServiceUnavailableError, ReplayStreamLimitError
 from app.schemas.mission import (
     AccidentTriggerResponse,
     MissionCreateRequest,
     MissionCreateResponse,
     MissionSession,
 )
+from app.schemas.planning_validation import PlanningSimulationResponse
 from app.schemas.replay import (
     CurrentTelemetryResponse,
     ReplayStartRequest,
     ReplayStartResponse,
 )
 from app.services.mission_lifecycle_service import MissionLifecycleService
+from app.services.mission_plan_simulation_service import MissionPlanSimulationService
 from app.services.telemetry_replay_service import TelemetryReplayService
 
 logger = logging.getLogger("ares.missions")
@@ -43,6 +45,18 @@ def get_replay_stream_limiter(request: Request) -> ReplayStreamLimiter:
     limiter = request.app.state.replay_stream_limiter
     assert isinstance(limiter, ReplayStreamLimiter)
     return limiter
+
+
+def get_mission_plan_simulation_service(
+    request: Request,
+) -> MissionPlanSimulationService:
+    service = getattr(request.app.state, "mission_plan_simulation_service", None)
+    if service is None:
+        raise PlanningServiceUnavailableError(
+            "Mission planning service is unavailable",
+        )
+    assert isinstance(service, MissionPlanSimulationService)
+    return service
 
 
 @router.post(
@@ -137,6 +151,25 @@ async def get_current_telemetry(
     service: TelemetryReplayService = Depends(get_telemetry_replay_service),
 ) -> CurrentTelemetryResponse:
     return await service.get_current_telemetry(session_id)
+
+
+@router.post(
+    "/{session_id}/plan",
+    response_model=PlanningSimulationResponse,
+    status_code=200,
+    summary="Generate grounded candidate and simulate",
+    description=(
+        "Require REPLAYING or COMPLETED, generate one evidence-grounded "
+        "candidate through MissionPlanningService, simulate it once through "
+        "SimulationService, and persist validation artifacts. No request body. "
+        "STABILIZED, FAILURE, and REJECTED are valid HTTP 200 results."
+    ),
+)
+async def plan_mission(
+    session_id: str,
+    service: MissionPlanSimulationService = Depends(get_mission_plan_simulation_service),
+) -> PlanningSimulationResponse:
+    return await service.generate_and_simulate(session_id)
 
 
 @router.get(

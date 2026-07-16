@@ -28,6 +28,13 @@ from app.schemas.planning import (
     PlanningAttemptStatus,
     PlanningGenerationResponse,
 )
+from app.schemas.planning_validation import (
+    PlanningResultComparison,
+    PlanningResultSummary,
+    PlanningSimulationResponse,
+    PlanningValidationRecord,
+    PlanningValidationStatus,
+)
 from app.schemas.replay import (
     CurrentTelemetryResponse,
     ReplayCompleteEvent,
@@ -57,6 +64,11 @@ __all__ = [
     "PlanningAttempt",
     "PlanningAttemptStatus",
     "PlanningGenerationResponse",
+    "PlanningResultComparison",
+    "PlanningResultSummary",
+    "PlanningSimulationResponse",
+    "PlanningValidationRecord",
+    "PlanningValidationStatus",
     "CrewTelemetry",
     "CrewHealthStatus",
     "CrewAlarmType",

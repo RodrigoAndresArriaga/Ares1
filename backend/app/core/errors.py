@@ -78,6 +78,13 @@ ARES_HTTP_STATUS_BY_CODE: Mapping[ErrorCode, int] = {
     ErrorCode.PLANNING_ATTEMPT_STORAGE_ERROR: 500,
     ErrorCode.PLANNING_ATTEMPT_ID_INVALID: 400,
     ErrorCode.MISSION_RETRIEVAL_QUERY_TOO_LARGE: 500,
+    ErrorCode.PLANNING_VALIDATION_NOT_FOUND: 404,
+    ErrorCode.PLANNING_VALIDATION_ALREADY_EXISTS: 409,
+    ErrorCode.PLANNING_VALIDATION_CORRUPT: 500,
+    ErrorCode.PLANNING_VALIDATION_CONFLICT: 409,
+    ErrorCode.PLANNING_VALIDATION_STORAGE_ERROR: 500,
+    ErrorCode.PLANNING_SIMULATION_INTEGRITY_ERROR: 500,
+    ErrorCode.PLANNING_SERVICE_UNAVAILABLE: 503,
     ErrorCode.INTERNAL_SERVER_ERROR: 500,
 }
 
@@ -1485,6 +1492,212 @@ class MissionRetrievalQueryTooLargeError(AresBackendError):
         return type(self)(
             self.message,
             session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class PlanningValidationNotFoundError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planning validation not found",
+        *,
+        attempt_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_VALIDATION_NOT_FOUND,
+            run_id=run_id,
+        )
+        self.attempt_id = attempt_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            attempt_id=self.attempt_id,
+            run_id=run_id,
+        )
+
+
+class PlanningValidationAlreadyExistsError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planning validation already exists",
+        *,
+        attempt_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_VALIDATION_ALREADY_EXISTS,
+            run_id=run_id,
+        )
+        self.attempt_id = attempt_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            attempt_id=self.attempt_id,
+            run_id=run_id,
+        )
+
+
+class PlanningValidationCorruptError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planning validation artifact is corrupt",
+        *,
+        attempt_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_VALIDATION_CORRUPT,
+            run_id=run_id,
+        )
+        self.attempt_id = attempt_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            attempt_id=self.attempt_id,
+            run_id=run_id,
+        )
+
+
+class PlanningValidationConflictError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planning validation state conflict",
+        *,
+        attempt_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_VALIDATION_CONFLICT,
+            run_id=run_id,
+        )
+        self.attempt_id = attempt_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            attempt_id=self.attempt_id,
+            run_id=run_id,
+        )
+
+
+class PlanningValidationStorageError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planning validation storage failed",
+        *,
+        attempt_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_VALIDATION_STORAGE_ERROR,
+            run_id=run_id,
+        )
+        self.attempt_id = attempt_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            attempt_id=self.attempt_id,
+            run_id=run_id,
+        )
+
+
+class PlanningSimulationIntegrityError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planning simulation integrity check failed",
+        *,
+        session_id: str | None = None,
+        attempt_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_SIMULATION_INTEGRITY_ERROR,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+        self.attempt_id = attempt_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            attempt_id=self.attempt_id,
+            run_id=run_id,
+        )
+
+
+class PlanningServiceUnavailableError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Mission planning service is unavailable",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_SERVICE_UNAVAILABLE,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class PlanningSimulationCancelledError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planning simulation operation was cancelled",
+        *,
+        session_id: str | None = None,
+        attempt_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_SIMULATION_CANCELLED,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+        self.attempt_id = attempt_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            attempt_id=self.attempt_id,
             run_id=run_id,
         )
 
