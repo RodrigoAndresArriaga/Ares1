@@ -63,6 +63,13 @@ def test_docs_and_openapi_available(valid_settings: Settings) -> None:
         paths = payload["paths"]
         assert "/api/health" in paths
         assert "/api/sim/run" in paths
+        assert "/api/sim/result/{run_id}" in paths
+        assert "/api/missions" in paths
+        assert "/api/missions/{session_id}" in paths
+        assert "/api/missions/{session_id}/accident" in paths
+        assert "/api/missions/{session_id}/replay" in paths
+        assert "/api/missions/{session_id}/telemetry" not in paths
+        assert "/api/missions/{session_id}/stream" not in paths
         assert payload["info"]["title"] == "ARES-1 Phase 1 Backend"
         assert payload["info"]["version"] == "0.1.0"
         description = payload["info"].get("description", "").lower()
@@ -72,6 +79,7 @@ def test_docs_and_openapi_available(valid_settings: Settings) -> None:
         sim_post = paths["/api/sim/run"]["post"]
         assert "failure" in sim_post.get("description", "").lower()
         assert "rejected" in sim_post.get("description", "").lower()
+        assert "201" in paths["/api/missions"]["post"]["responses"]
 
 
 def test_no_wildcard_cors_middleware(valid_settings: Settings) -> None:

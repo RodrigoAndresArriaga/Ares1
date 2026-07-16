@@ -23,7 +23,7 @@ from app.schemas.replay import (
     ReplayTelemetryEvent,
 )
 from app.schemas.result import OutcomeStatus, SimulationMetrics, SimulationResult
-from app.schemas.run import RunArtifactMetadata
+from app.schemas.run import PersistedRunResultResponse, RunArtifactMetadata
 from app.schemas.telemetry import HabitatTelemetry, TelemetrySample, TimelineEvent
 
 __all__ = [
@@ -40,6 +40,7 @@ __all__ = [
     "SimulationMetrics",
     "SimulationResult",
     "RunArtifactMetadata",
+    "PersistedRunResultResponse",
     "SimulationRunRequest",
     "SimulationRunResponse",
     "HealthResponse",

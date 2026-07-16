@@ -12,8 +12,10 @@ from app.api.routes.health import evaluate_readiness
 from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
+from app.services.mission_lifecycle_service import MissionLifecycleService
 from app.services.run_store import RunStore
 from app.services.scenario_registry import ScenarioRegistry
+from app.services.session_store import SessionStore
 from app.services.simulation_service import SimulationService
 from app.services.simulator_client import SimulatorClient
 
@@ -38,6 +40,22 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             run_store=run_store,
             simulator_client=simulator_client,
         )
+
+    if getattr(app.state, "scenario_registry", None) is None:
+        app.state.scenario_registry = ScenarioRegistry(settings.scenario_dir)
+    if getattr(app.state, "run_store", None) is None:
+        app.state.run_store = RunStore(settings.runs_dir)
+
+    session_store = SessionStore(settings.sessions_dir)
+    app.state.session_store = session_store
+    app.state.mission_lifecycle_service = MissionLifecycleService(
+        scenario_registry=app.state.scenario_registry,
+        session_store=session_store,
+        simulation_service=app.state.simulation_service,
+        replay_default_interval_ms=settings.replay_default_interval_ms,
+        replay_min_interval_ms=settings.replay_min_interval_ms,
+        replay_max_interval_ms=settings.replay_max_interval_ms,
+    )
 
     if readiness.ready:
         logger.info("startup readiness ok reason_code=%s", readiness.reason_code)

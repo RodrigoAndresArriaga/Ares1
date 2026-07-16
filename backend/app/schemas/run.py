@@ -4,11 +4,12 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from app.schemas.common import CONTRACT_CONFIG, StrictInt
+from app.schemas.result import SimulationResult
 
 _SHA256_UPPER = re.compile(r"^[0-9A-F]{64}$")
 
@@ -86,3 +87,27 @@ class RunArtifactMetadata(BaseModel):
     @classmethod
     def _validate_optional_sha256(cls, value: str | None) -> str | None:
         return _validate_sha256_field(value)
+
+
+class PersistedRunResultResponse(BaseModel):
+    model_config = CONTRACT_CONFIG
+
+    run_id: str
+    metadata: RunArtifactMetadata
+    result: SimulationResult
+
+    @field_validator("run_id", mode="before")
+    @classmethod
+    def _validate_run_id(cls, value: object) -> str:
+        return validate_canonical_run_id(value)
+
+    @model_validator(mode="after")
+    def _validate_consistency(self) -> Self:
+        if self.metadata.run_id != self.run_id:
+            raise ValueError("metadata.run_id must equal run_id")
+        if self.metadata.scenario_id != self.result.scenario_id:
+            raise ValueError("metadata.scenario_id must equal result.scenario_id")
+        if self.metadata.outcome is not None:
+            if self.metadata.outcome != self.result.outcome.value:
+                raise ValueError("metadata.outcome must equal result.outcome")
+        return self

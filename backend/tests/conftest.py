@@ -202,3 +202,58 @@ def valid_layout(tmp_path: Path) -> dict[str, Path]:
 @pytest.fixture
 def valid_settings(valid_layout: dict[str, Path]) -> Settings:
     return settings_from_layout(valid_layout)
+
+
+# Settings with the real release scenario bytes (mission create needs resolve)
+def make_mission_settings(tmp_path: Path, **overrides: Any) -> Settings:
+    layout = make_valid_layout(tmp_path)
+    install_release_scenario(layout["scenario_dir"])
+    return settings_from_layout(layout, **overrides)
+
+
+# AsyncMock SimulationService that returns a fixture-backed run response
+def make_fake_simulation_service(
+    result_data: Any,
+    *,
+    run_id: str = "00000000-0000-4000-8000-000000000001",
+    duration_ms: int = 25,
+) -> Any:
+    from unittest.mock import AsyncMock
+
+    from app.schemas.api import SimulationRunResponse
+    from app.schemas.result import SimulationResult
+    from app.services.simulation_service import SimulationService
+
+    service = AsyncMock(spec=SimulationService)
+    service.run_simulation = AsyncMock(
+        return_value=SimulationRunResponse(
+            run_id=run_id,
+            duration_ms=duration_ms,
+            result=SimulationResult.model_validate(result_data),
+        ),
+    )
+    return service
+
+
+# seed a completed run workspace for persisted-result HTTP tests
+def seed_completed_run(
+    store: Any,
+    result_fixture: Path,
+    *,
+    request: Any | None = None,
+) -> Any:
+    from app.services.run_store import sha256_file
+
+    req = request if request is not None else make_baseline_request()
+    workspace = store.create_workspace(req, RELEASE_SCENARIO_PATH)
+    result_bytes = result_fixture.read_bytes()
+    workspace.result_path.write_bytes(result_bytes)
+    outcome = json.loads(result_bytes.decode("utf-8"))["outcome"]
+    store.write_completed_metadata(
+        workspace,
+        result_sha256=sha256_file(workspace.result_path),
+        process_exit_code=0,
+        duration_ms=1,
+        outcome=outcome,
+    )
+    return workspace
