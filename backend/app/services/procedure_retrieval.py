@@ -193,10 +193,13 @@ class ProcedureRetrievalService:
 
         # descending rerank, then descending similarity, then ascending position
         reranked.sort(key=lambda item: (-item[0], -item[1], item[2]))
-        limit = min(top_k, len(reranked))
+        selected = self._select_with_procedure_coverage(
+            reranked,
+            top_k=top_k,
+        )
         matches: list[ProcedureRetrievalMatch] = []
         for rank, (rerank_score, similarity, position) in enumerate(
-            reranked[:limit],
+            selected,
             start=1,
         ):
             embedded = self._index.embedded_chunks[position]
@@ -222,6 +225,42 @@ class ProcedureRetrievalService:
             index_sha256=self._index.index_sha256,
             matches=tuple(matches),
         )
+
+    def _select_with_procedure_coverage(
+        self,
+        reranked: list[tuple[float, float, int]],
+        *,
+        top_k: int,
+    ) -> list[tuple[float, float, int]]:
+        # Prefer one highest-scoring chunk per procedure, then fill by score.
+        # Preserves multi-topic coverage without procedure-specific boosts.
+        if not reranked or top_k <= 0:
+            return []
+        selected: list[tuple[float, float, int]] = []
+        selected_positions: set[int] = set()
+        seen_procedures: set[str] = set()
+        for item in reranked:
+            _rerank_score, _similarity, position = item
+            procedure_id = self._index.embedded_chunks[position].chunk.procedure_id
+            if procedure_id in seen_procedures:
+                continue
+            selected.append(item)
+            selected_positions.add(position)
+            seen_procedures.add(procedure_id)
+            if len(selected) >= top_k:
+                break
+        if len(selected) < top_k:
+            for item in reranked:
+                _rerank_score, _similarity, position = item
+                if position in selected_positions:
+                    continue
+                selected.append(item)
+                selected_positions.add(position)
+                if len(selected) >= top_k:
+                    break
+        # final order remains pure score order among the selected set
+        selected.sort(key=lambda item: (-item[0], -item[1], item[2]))
+        return selected[:top_k]
 
     def _validate_request(self, *, query: str, top_k: int) -> str:
         if not isinstance(query, str):

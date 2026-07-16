@@ -38,6 +38,7 @@ pythonpath = ["."]
 markers = [
     "integration: HTTP/service integration tests",
     "real_simulator: requires frozen Simulator/build/sim_core.exe",
+    "real_nim: requires ARES_NVIDIA_API_KEY and hosted NVIDIA NIM access",
 ]
 
 [tool.ruff]

@@ -12,3 +12,5 @@ data/runs/*
 !data/runs/.gitkeep
 data/sessions/*
 !data/sessions/.gitkeep
+data/retrieval/*
+!data/retrieval/.gitkeep

@@ -160,7 +160,8 @@ class Settings(BaseSettings):
 
     retrieval_default_top_k: int = Field(default=5)
     retrieval_max_top_k: int = Field(default=10)
-    retrieval_rerank_candidate_count: int = Field(default=20)
+    # 40 keeps multi-topic compound queries inside the rerank pool
+    retrieval_rerank_candidate_count: int = Field(default=40)
 
     @field_validator("sim_timeout_seconds", mode="before")
     @classmethod

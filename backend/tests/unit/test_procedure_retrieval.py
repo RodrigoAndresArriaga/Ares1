@@ -424,6 +424,66 @@ def test_empty_index_returns_zero_matches() -> None:
     assert reranker.calls == []
 
 
+def test_procedure_coverage_surfaces_crowded_out_procedure() -> None:
+    # Three strong chunks from one procedure would crowd out a weaker second
+    # procedure under pure top_k truncation; coverage selection keeps both.
+    model = _model(dimensions=2)
+    chunks = (
+        _chunk(
+            chunk_id=_SHA,
+            content_sha256=_SHA_B,
+            chunk_index=0,
+            procedure_id="ARES-PROC-SOLAR-001",
+            content="solar a",
+        ),
+        _chunk(
+            chunk_id=_SHA_0,
+            content_sha256=_SHA_D,
+            chunk_index=1,
+            procedure_id="ARES-PROC-SOLAR-001",
+            content="solar b",
+        ),
+        _chunk(
+            chunk_id=_SHA_1,
+            content_sha256=_SHA_E,
+            chunk_index=2,
+            procedure_id="ARES-PROC-SOLAR-001",
+            content="solar c",
+        ),
+        _chunk(
+            chunk_id=_SHA_2,
+            content_sha256=_SHA_C,
+            chunk_index=3,
+            procedure_id="ARES-PROC-PWR-001",
+            content="power rationing",
+        ),
+    )
+    index = _index(
+        ((1.0, 0.0), (0.99, 0.01), (0.98, 0.02), (0.5, 0.0)),
+        model=model,
+        chunks=chunks,
+    )
+    provider = ScriptedProvider(model=model, query_vector=(1.0, 0.0))
+    reranker = FakeReranker(scores=(30.0, 20.0, 10.0, 5.0))
+    result = ProcedureRetrievalService(
+        index=index,
+        provider=provider,
+        reranker=reranker,
+        rerank_candidate_count=4,
+        max_top_k=3,
+    ).retrieve(query="solar and power", top_k=3)
+    returned_ids = {m.chunk.procedure_id for m in result.matches}
+    assert "ARES-PROC-SOLAR-001" in returned_ids
+    assert "ARES-PROC-PWR-001" in returned_ids
+    assert result.returned_count == 3
+    for left, right in zip(result.matches, result.matches[1:], strict=False):
+        assert (-left.rerank_score, -left.similarity, left.index_position) <= (
+            -right.rerank_score,
+            -right.similarity,
+            right.index_position,
+        )
+
+
 def test_no_mutation_of_index_vectors() -> None:
     model = _model(dimensions=2)
     index = _index(((1.0, 0.0), (0.0, 1.0)), model=model)

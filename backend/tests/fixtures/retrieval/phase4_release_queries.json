@@ -1,0 +1,52 @@
+{
+  "deferred_procedure_ids": [
+    "ARES-PROC-COMMS-001",
+    "ARES-PROC-CO2-001"
+  ],
+  "queries": [
+    {
+      "id": "oxygen_isolation",
+      "query": "Habitat oxygen and pressure are dropping after a suspected module leak. Retrieve the immediate isolation and oxygen-conservation procedure.",
+      "expected_procedure_ids": ["ARES-PROC-OXY-001"],
+      "top_k": 3,
+      "acceptance_window": 3,
+      "kind": "single"
+    },
+    {
+      "id": "solar_array_failure",
+      "query": "Solar array output has collapsed after external damage. Retrieve the approved solar-array failure and repair procedure.",
+      "expected_procedure_ids": ["ARES-PROC-SOLAR-001"],
+      "top_k": 3,
+      "acceptance_window": 3,
+      "kind": "single"
+    },
+    {
+      "id": "power_rationing",
+      "query": "Available electrical power is insufficient for normal habitat loads. Retrieve the approved power-rationing and load-reduction procedure.",
+      "expected_procedure_ids": ["ARES-PROC-PWR-001"],
+      "top_k": 3,
+      "acceptance_window": 3,
+      "kind": "single"
+    },
+    {
+      "id": "eva_repair",
+      "query": "An external repair requires an EVA. Retrieve the approved EVA repair preparation, execution, and safety procedure.",
+      "expected_procedure_ids": ["ARES-PROC-EVA-001"],
+      "top_k": 3,
+      "acceptance_window": 3,
+      "kind": "single"
+    },
+    {
+      "id": "compound_solar_power_eva",
+      "query": "A damaged solar array has reduced available power and may require an EVA repair. Retrieve the procedures needed for solar failure, power rationing, and EVA repair.",
+      "expected_procedure_ids": [
+        "ARES-PROC-SOLAR-001",
+        "ARES-PROC-PWR-001",
+        "ARES-PROC-EVA-001"
+      ],
+      "top_k": 10,
+      "acceptance_window": 10,
+      "kind": "compound"
+    }
+  ]
+}

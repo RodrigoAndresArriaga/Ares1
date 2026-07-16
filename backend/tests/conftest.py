@@ -70,6 +70,52 @@ def require_real_simulator() -> None:
     pytest.skip("frozen simulator executable not present")
 
 
+# resolve NVIDIA API key from env or backend/.env without printing it
+def resolve_nvidia_api_key() -> str | None:
+    from_env = os.environ.get("ARES_NVIDIA_API_KEY")
+    if from_env is not None and from_env.strip():
+        return from_env.strip()
+    env_path = BACKEND_ROOT / ".env"
+    if not env_path.is_file():
+        return None
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        for prefix in (
+            "ARES_NVIDIA_API_KEY=",
+            "nvidia_api_key=",
+            "NVIDIA_API_KEY=",
+            "ARES_NVIDIA_API_KEY:",
+            "nvidia_api_key:",
+            "NVIDIA_API_KEY:",
+        ):
+            if line.startswith(prefix):
+                value = line[len(prefix) :].strip().strip('"').strip("'")
+                return value if value else None
+    return None
+
+
+# true when a usable NVIDIA API key is configured
+def real_nim_available() -> bool:
+    return resolve_nvidia_api_key() is not None
+
+
+# skip unless API key present; fail hard when release gate requires it
+def require_real_nim() -> None:
+    if real_nim_available():
+        return
+    if os.environ.get("ARES_REQUIRE_REAL_NIM") == "1":
+        pytest.fail(
+            "ARES_REQUIRE_REAL_NIM=1 but NVIDIA API key not configured",
+        )
+    pytest.skip("NVIDIA API key not configured")
+
+
 # copy exact release scenario bytes into an isolated scenario directory
 def install_release_scenario(scenario_dir: Path) -> Path:
     scenario_dir.mkdir(parents=True, exist_ok=True)
