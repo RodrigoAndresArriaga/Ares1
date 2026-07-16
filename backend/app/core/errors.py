@@ -49,6 +49,8 @@ ARES_HTTP_STATUS_BY_CODE: Mapping[ErrorCode, int] = {
     ErrorCode.PROCEDURE_MANUAL_NOT_FOUND: 404,
     ErrorCode.PROCEDURE_MANUAL_SECURITY_ERROR: 400,
     ErrorCode.PROCEDURE_MANUAL_PARSE_ERROR: 400,
+    ErrorCode.EMBEDDING_PROVIDER_ERROR: 502,
+    ErrorCode.EMBEDDING_VALIDATION_ERROR: 400,
     ErrorCode.INTERNAL_SERVER_ERROR: 500,
 }
 
@@ -847,6 +849,44 @@ class ProcedureManualParseError(AresBackendError):
             filename=self.filename,
             run_id=run_id,
         )
+
+
+class EmbeddingProviderError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Embedding provider failed",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.EMBEDDING_PROVIDER_ERROR,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class EmbeddingValidationError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Embedding validation failed",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.EMBEDDING_VALIDATION_ERROR,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
 
 
 # register centralized typed and unexpected exception handlers
