@@ -31,6 +31,7 @@ ARES_HTTP_STATUS_BY_CODE: Mapping[ErrorCode, int] = {
     ErrorCode.REPLAY_INTERVAL_INVALID: 422,
     ErrorCode.REPLAY_NOT_STARTED: 409,
     ErrorCode.REPLAY_EVENT_ID_INVALID: 400,
+    ErrorCode.REPLAY_STREAM_LIMIT: 503,
     ErrorCode.BASELINE_RESULT_UNAVAILABLE: 500,
     ErrorCode.BASELINE_RESULT_MISMATCH: 500,
     ErrorCode.MISSION_TRIGGER_FAILED: 500,
@@ -332,6 +333,31 @@ class ReplayEventIdInvalidError(AresBackendError):
         super().__init__(
             message,
             code=ErrorCode.REPLAY_EVENT_ID_INVALID,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class ReplayStreamLimitError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Maximum concurrent replay streams reached",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.REPLAY_STREAM_LIMIT,
             run_id=run_id,
         )
         self.session_id = session_id

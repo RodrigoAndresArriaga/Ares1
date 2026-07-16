@@ -114,10 +114,24 @@ def test_lifespan_wires_session_store_and_lifecycle_once(
         assert lifecycle._simulation_service is fake
         assert store._sessions_root == app.state.settings.sessions_dir.resolve()
 
+        from app.api.sse import ReplayStreamLimiter
+        from app.services.telemetry_replay_service import TelemetryReplayService
+
+        replay = app.state.telemetry_replay_service
+        limiter = app.state.replay_stream_limiter
+        assert isinstance(replay, TelemetryReplayService)
+        assert isinstance(limiter, ReplayStreamLimiter)
+        assert replay._session_store is store
+        assert replay._run_store is app.state.run_store
+        assert limiter.capacity == app.state.settings.max_replay_streams
+        assert not hasattr(app.state, "replay_stream_semaphore")
+
         _create_session(client)
         _create_session(client)
         assert app.state.session_store is store
         assert app.state.mission_lifecycle_service is lifecycle
+        assert app.state.telemetry_replay_service is replay
+        assert app.state.replay_stream_limiter is limiter
     finally:
         _close_client(client)
 
@@ -150,7 +164,10 @@ def test_shutdown_has_no_background_mission_tasks(
         _create_session(client)
     finally:
         _close_client(client)
+    assert hasattr(app.state, "replay_stream_limiter")
+    assert app.state.replay_stream_limiter.capacity == app.state.settings.max_replay_streams
     assert not hasattr(app.state, "replay_stream_semaphore")
+    assert not hasattr(app.state, "replay_background_tasks")
 
 
 # --- B. POST /api/missions ---
@@ -839,10 +856,17 @@ def test_openapi_step6_routes(tmp_path: Path) -> None:
     assert "/api/missions/{session_id}/accident" in paths
     assert "/api/missions/{session_id}/replay" in paths
     assert "/api/sim/result/{run_id}" in paths
-    assert "/api/missions/{session_id}/telemetry" not in paths
-    assert "/api/missions/{session_id}/stream" not in paths
+    assert "/api/missions/{session_id}/telemetry" in paths
+    assert "/api/missions/{session_id}/stream" in paths
 
     create = paths["/api/missions"]["post"]
     assert "201" in create["responses"]
     accident = paths["/api/missions/{session_id}/accident"]["post"]
     assert "requestBody" not in accident
+    telemetry = paths["/api/missions/{session_id}/telemetry"]["get"]
+    assert "CurrentTelemetryResponse" in str(
+        telemetry["responses"]["200"].get("content", {})
+    )
+    stream = paths["/api/missions/{session_id}/stream"]["get"]
+    assert "text/event-stream" in stream["responses"]["200"].get("content", {})
+    assert not any("websocket" in p.lower() for p in paths)

@@ -1,16 +1,28 @@
 # Mission lifecycle HTTP routes — thin bridge to MissionLifecycleService
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+import logging
 
+from fastapi import APIRouter, Depends, Header, Request
+from fastapi.responses import StreamingResponse
+
+from app.api.sse import ReplayStreamLimiter, generate_replay_stream
+from app.core.errors import ReplayStreamLimitError
 from app.schemas.mission import (
     AccidentTriggerResponse,
     MissionCreateRequest,
     MissionCreateResponse,
     MissionSession,
 )
-from app.schemas.replay import ReplayStartRequest, ReplayStartResponse
+from app.schemas.replay import (
+    CurrentTelemetryResponse,
+    ReplayStartRequest,
+    ReplayStartResponse,
+)
 from app.services.mission_lifecycle_service import MissionLifecycleService
+from app.services.telemetry_replay_service import TelemetryReplayService
+
+logger = logging.getLogger("ares.missions")
 
 router = APIRouter(prefix="/missions", tags=["missions"])
 
@@ -19,6 +31,18 @@ def get_mission_lifecycle_service(request: Request) -> MissionLifecycleService:
     service = request.app.state.mission_lifecycle_service
     assert isinstance(service, MissionLifecycleService)
     return service
+
+
+def get_telemetry_replay_service(request: Request) -> TelemetryReplayService:
+    service = request.app.state.telemetry_replay_service
+    assert isinstance(service, TelemetryReplayService)
+    return service
+
+
+def get_replay_stream_limiter(request: Request) -> ReplayStreamLimiter:
+    limiter = request.app.state.replay_stream_limiter
+    assert isinstance(limiter, ReplayStreamLimiter)
+    return limiter
 
 
 @router.post(
@@ -96,3 +120,95 @@ async def start_replay(
         stream_path=f"/api/missions/{session.session_id}/stream",
         current_telemetry_path=f"/api/missions/{session.session_id}/telemetry",
     )
+
+
+@router.get(
+    "/{session_id}/telemetry",
+    response_model=CurrentTelemetryResponse,
+    status_code=200,
+    summary="Read current replay telemetry",
+    description=(
+        "Return the exact currently due telemetry sample for a REPLAYING or "
+        "COMPLETED mission. Does not interpolate or alter nested samples."
+    ),
+)
+async def get_current_telemetry(
+    session_id: str,
+    service: TelemetryReplayService = Depends(get_telemetry_replay_service),
+) -> CurrentTelemetryResponse:
+    return await service.get_current_telemetry(session_id)
+
+
+@router.get(
+    "/{session_id}/stream",
+    status_code=200,
+    summary="Stream telemetry replay as Server-Sent Events",
+    description=(
+        "Ordered text/event-stream of exact telemetry samples and a final "
+        "complete event. Supports Last-Event-ID resume without persisting a "
+        "client cursor."
+    ),
+    responses={
+        200: {
+            "content": {
+                "text/event-stream": {
+                    "schema": {"type": "string"},
+                },
+            },
+        },
+    },
+)
+async def stream_replay(
+    request: Request,
+    session_id: str,
+    last_event_id: str | None = Header(None, alias="Last-Event-ID"),
+    service: TelemetryReplayService = Depends(get_telemetry_replay_service),
+    limiter: ReplayStreamLimiter = Depends(get_replay_stream_limiter),
+) -> StreamingResponse:
+    lease = await limiter.try_acquire()
+    if lease is None:
+        logger.warning(
+            "replay_stream_rejected session_id=%s code=REPLAY_STREAM_LIMIT active=%s",
+            session_id,
+            limiter.active_count,
+        )
+        raise ReplayStreamLimitError(session_id=session_id)
+
+    logger.info(
+        "replay_stream_accepted session_id=%s last_event_id=%s active=%s",
+        session_id,
+        last_event_id,
+        limiter.active_count,
+    )
+
+    try:
+        initial_batch = await service.get_due_events(
+            session_id,
+            last_event_id=last_event_id,
+        )
+    except Exception:
+        await lease.release()
+        raise
+
+    settings = request.app.state.settings
+    try:
+        return StreamingResponse(
+            generate_replay_stream(
+                request=request,
+                service=service,
+                lease=lease,
+                session_id=session_id,
+                initial_batch=initial_batch,
+                initial_last_event_id=last_event_id,
+                heartbeat_seconds=settings.sse_heartbeat_seconds,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+    except Exception:
+        await lease.release()
+        raise

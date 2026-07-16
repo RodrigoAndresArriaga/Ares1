@@ -9,6 +9,7 @@ from fastapi import FastAPI
 
 from app.api.router import api_router
 from app.api.routes.health import evaluate_readiness
+from app.api.sse import ReplayStreamLimiter
 from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
@@ -18,6 +19,7 @@ from app.services.scenario_registry import ScenarioRegistry
 from app.services.session_store import SessionStore
 from app.services.simulation_service import SimulationService
 from app.services.simulator_client import SimulatorClient
+from app.services.telemetry_replay_service import TelemetryReplayService
 
 logger = logging.getLogger("ares.main")
 
@@ -55,6 +57,13 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         replay_default_interval_ms=settings.replay_default_interval_ms,
         replay_min_interval_ms=settings.replay_min_interval_ms,
         replay_max_interval_ms=settings.replay_max_interval_ms,
+    )
+    app.state.telemetry_replay_service = TelemetryReplayService(
+        session_store=session_store,
+        run_store=app.state.run_store,
+    )
+    app.state.replay_stream_limiter = ReplayStreamLimiter(
+        capacity=settings.max_replay_streams,
     )
 
     if readiness.ready:

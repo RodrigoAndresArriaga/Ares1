@@ -68,8 +68,8 @@ def test_docs_and_openapi_available(valid_settings: Settings) -> None:
         assert "/api/missions/{session_id}" in paths
         assert "/api/missions/{session_id}/accident" in paths
         assert "/api/missions/{session_id}/replay" in paths
-        assert "/api/missions/{session_id}/telemetry" not in paths
-        assert "/api/missions/{session_id}/stream" not in paths
+        assert "/api/missions/{session_id}/telemetry" in paths
+        assert "/api/missions/{session_id}/stream" in paths
         assert payload["info"]["title"] == "ARES-1 Phase 1 Backend"
         assert payload["info"]["version"] == "0.1.0"
         description = payload["info"].get("description", "").lower()
@@ -80,6 +80,13 @@ def test_docs_and_openapi_available(valid_settings: Settings) -> None:
         assert "failure" in sim_post.get("description", "").lower()
         assert "rejected" in sim_post.get("description", "").lower()
         assert "201" in paths["/api/missions"]["post"]["responses"]
+        telemetry_get = paths["/api/missions/{session_id}/telemetry"]["get"]
+        assert "200" in telemetry_get["responses"]
+        stream_get = paths["/api/missions/{session_id}/stream"]["get"]
+        assert "200" in stream_get["responses"]
+        stream_content = stream_get["responses"]["200"].get("content", {})
+        assert "text/event-stream" in stream_content
+        assert not any("websocket" in path.lower() for path in paths)
 
 
 def test_no_wildcard_cors_middleware(valid_settings: Settings) -> None:
