@@ -23,6 +23,15 @@ from app.schemas.replay import (
     ReplayTelemetryEvent,
 )
 from app.schemas.result import OutcomeStatus, SimulationMetrics, SimulationResult
+from app.schemas.retrieval import (
+    CorpusManifest,
+    ProcedureChunk,
+    ProcedureCorpusSnapshot,
+    ProcedureDocumentDescriptor,
+    ProcedureMetadata,
+    ProcedureStatus,
+    SourceClassification,
+)
 from app.schemas.run import PersistedRunResultResponse, RunArtifactMetadata
 from app.schemas.telemetry import HabitatTelemetry, TelemetrySample, TimelineEvent
 
@@ -56,4 +65,11 @@ __all__ = [
     "CurrentTelemetryResponse",
     "ReplayTelemetryEvent",
     "ReplayCompleteEvent",
+    "CorpusManifest",
+    "ProcedureChunk",
+    "ProcedureCorpusSnapshot",
+    "ProcedureDocumentDescriptor",
+    "ProcedureMetadata",
+    "ProcedureStatus",
+    "SourceClassification",
 ]

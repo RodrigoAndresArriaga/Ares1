@@ -44,6 +44,11 @@ ARES_HTTP_STATUS_BY_CODE: Mapping[ErrorCode, int] = {
     ErrorCode.RUN_METADATA_NOT_FOUND: 404,
     ErrorCode.RUN_METADATA_CORRUPT: 500,
     ErrorCode.RUN_ARTIFACT_STORAGE_ERROR: 500,
+    ErrorCode.PROCEDURE_CORPUS_INVALID: 400,
+    ErrorCode.PROCEDURE_MANIFEST_INVALID: 400,
+    ErrorCode.PROCEDURE_MANUAL_NOT_FOUND: 404,
+    ErrorCode.PROCEDURE_MANUAL_SECURITY_ERROR: 400,
+    ErrorCode.PROCEDURE_MANUAL_PARSE_ERROR: 400,
     ErrorCode.INTERNAL_SERVER_ERROR: 500,
 }
 
@@ -728,6 +733,119 @@ class SimulatorOutputValidationError(AresBackendError):
             self.message,
             run_id=run_id,
             process_evidence=self.process_evidence,
+        )
+
+
+class ProcedureCorpusInvalidError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Procedure corpus is invalid",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PROCEDURE_CORPUS_INVALID,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class ProcedureManifestInvalidError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Procedure corpus manifest is invalid",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PROCEDURE_MANIFEST_INVALID,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class ProcedureManualNotFoundError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Procedure manual not found",
+        *,
+        filename: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PROCEDURE_MANUAL_NOT_FOUND,
+            run_id=run_id,
+        )
+        self.filename = filename
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            filename=self.filename,
+            run_id=run_id,
+        )
+
+
+class ProcedureManualSecurityError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Procedure manual path failed security checks",
+        *,
+        filename: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PROCEDURE_MANUAL_SECURITY_ERROR,
+            run_id=run_id,
+        )
+        self.filename = filename
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            filename=self.filename,
+            run_id=run_id,
+        )
+
+
+class ProcedureManualParseError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Procedure manual could not be parsed",
+        *,
+        filename: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PROCEDURE_MANUAL_PARSE_ERROR,
+            run_id=run_id,
+        )
+        self.filename = filename
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            filename=self.filename,
+            run_id=run_id,
         )
 
 
