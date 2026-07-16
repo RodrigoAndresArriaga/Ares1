@@ -63,6 +63,11 @@ ARES_HTTP_STATUS_BY_CODE: Mapping[ErrorCode, int] = {
     ErrorCode.NVIDIA_NIM_UNAVAILABLE: 502,
     ErrorCode.NVIDIA_NIM_RESPONSE_INVALID: 502,
     ErrorCode.RERANK_RESPONSE_INVALID: 502,
+    ErrorCode.PLANNER_CONTEXT_INVALID: 500,
+    ErrorCode.PLANNER_PROMPT_TOO_LARGE: 500,
+    ErrorCode.PLANNER_OUTPUT_INVALID: 502,
+    ErrorCode.PLANNER_MODEL_MISMATCH: 502,
+    ErrorCode.PLANNER_RESPONSE_INCOMPLETE: 502,
     ErrorCode.INTERNAL_SERVER_ERROR: 500,
 }
 
@@ -1120,6 +1125,101 @@ class RerankResponseInvalidError(AresBackendError):
         super().__init__(
             message,
             code=ErrorCode.RERANK_RESPONSE_INVALID,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class PlannerContextInvalidError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planner mission context is invalid",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNER_CONTEXT_INVALID,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class PlannerPromptTooLargeError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planner prompt exceeds configured maximum size",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNER_PROMPT_TOO_LARGE,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class PlannerOutputInvalidError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planner model output is invalid",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNER_OUTPUT_INVALID,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class PlannerModelMismatchError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planner response model does not match configured model",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNER_MODEL_MISMATCH,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class PlannerResponseIncompleteError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planner response is incomplete",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNER_RESPONSE_INCOMPLETE,
             run_id=run_id,
         )
 

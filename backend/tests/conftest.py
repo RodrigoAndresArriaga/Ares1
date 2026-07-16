@@ -303,3 +303,142 @@ def seed_completed_run(
         outcome=outcome,
     )
     return workspace
+
+
+PLANNER_SESSION_ID = "00000000-0000-4000-8000-000000000010"
+PLANNER_BASELINE_RUN_ID = "00000000-0000-4000-8000-000000000001"
+
+
+def make_planner_model_metadata() -> Any:
+    from app.schemas.planner import PlannerModelMetadata
+
+    return PlannerModelMetadata(
+        provider="nvidia",
+        model_id="nvidia/llama-3.3-nemotron-super-49b-v1",
+        model_revision="1.0",
+    )
+
+
+def make_planner_retrieval_result(**overrides: Any) -> Any:
+    from app.schemas.actions import ActionType
+    from app.schemas.embedding import EmbeddingModelDescriptor, RerankerModelDescriptor
+    from app.schemas.retrieval import (
+        CORPUS_SCHEMA_VERSION,
+        EvidenceReference,
+        ProcedureChunk,
+        ProcedureStatus,
+        SourceClassification,
+    )
+    from app.schemas.retrieval_query import (
+        RETRIEVAL_QUERY_SCHEMA_VERSION,
+        ProcedureRetrievalMatch,
+        ProcedureRetrievalResult,
+    )
+
+    sha = "a" * 64
+    sha_b = "b" * 64
+    sha_c = "c" * 64
+    sha_d = "d" * 64
+    sha_e = "e" * 64
+    chunk = ProcedureChunk.model_validate(
+        {
+            "schema_version": CORPUS_SCHEMA_VERSION,
+            "chunk_id": sha,
+            "procedure_id": "ARES-PROC-OXY-001",
+            "procedure_title": "Oxygen Leak Response",
+            "manual_path": "docs/procedures/manuals/oxygen_leak.md",
+            "section_path": ("Purpose",),
+            "section_title": "Purpose",
+            "chunk_index": 0,
+            "content": "Verify cabin pressure and isolate affected module.",
+            "embedding_text": "Procedure: Oxygen Leak Response\n\nVerify cabin pressure.",
+            "content_sha256": sha_b,
+            "manual_sha256": sha_c,
+            "source_classifications": (SourceClassification.ARES_ASSUMPTION,),
+            "evidence_references": (
+                EvidenceReference(
+                    evidence_id="EVID-ARES_ASM-001",
+                    classification=SourceClassification.ARES_ASSUMPTION,
+                    source_title="Test",
+                    locator="unit-test",
+                    supports="Unit test evidence.",
+                    url="",
+                ),
+            ),
+            "allowed_actions": (ActionType.ISOLATE_MODULE,),
+            "procedure_status": ProcedureStatus.PARTIAL_EVIDENCE,
+        },
+    )
+    match = ProcedureRetrievalMatch.model_validate(
+        {
+            "rank": 1,
+            "similarity": 0.91,
+            "rerank_score": 2.5,
+            "index_position": 0,
+            "chunk_id": chunk.chunk_id,
+            "chunk": chunk,
+        },
+    )
+    payload: dict[str, Any] = {
+        "schema_version": RETRIEVAL_QUERY_SCHEMA_VERSION,
+        "query": "oxygen leak isolate module",
+        "requested_top_k": 1,
+        "returned_count": 1,
+        "embedding_model": EmbeddingModelDescriptor(
+            provider="nvidia",
+            model_id="nvidia/llama-nemotron-embed-1b-v2",
+            model_revision=None,
+            dimensions=2048,
+        ),
+        "reranker_model": RerankerModelDescriptor(
+            provider="nvidia",
+            model_id="nvidia/llama-nemotron-rerank-1b-v2",
+            model_revision=None,
+        ),
+        "corpus_sha256": sha_d,
+        "index_sha256": sha_e,
+        "matches": (match,),
+    }
+    payload.update(overrides)
+    return ProcedureRetrievalResult.model_validate(payload)
+
+
+def make_planner_mission_context(
+    baseline_result_data: Any,
+    *,
+    sample_index: int = 0,
+) -> Any:
+    from app.schemas.planner import PlannerMissionContext
+    from app.schemas.result import OutcomeStatus, SimulationMetrics
+    from app.schemas.telemetry import TelemetrySample
+
+    history = baseline_result_data["telemetry_history"]
+    return PlannerMissionContext(
+        session_id=PLANNER_SESSION_ID,
+        scenario_id=baseline_result_data["scenario_id"],
+        baseline_run_id=PLANNER_BASELINE_RUN_ID,
+        baseline_outcome=OutcomeStatus(baseline_result_data["outcome"]),
+        baseline_failure_reasons=list(baseline_result_data["failure_reasons"]),
+        baseline_metrics=SimulationMetrics.model_validate(baseline_result_data["metrics"]),
+        current_sample_index=sample_index,
+        telemetry_sample_count=len(history),
+        current_telemetry=TelemetrySample.model_validate(history[sample_index]),
+    )
+
+
+def make_planner_prompt_input(
+    baseline_result_data: Any,
+    *,
+    sample_index: int = 0,
+    retrieval_overrides: dict[str, Any] | None = None,
+) -> Any:
+    from app.schemas.planner import PlannerPromptInput
+
+    retrieval_kwargs = retrieval_overrides or {}
+    return PlannerPromptInput(
+        mission_context=make_planner_mission_context(
+            baseline_result_data,
+            sample_index=sample_index,
+        ),
+        retrieval_result=make_planner_retrieval_result(**retrieval_kwargs),
+    )

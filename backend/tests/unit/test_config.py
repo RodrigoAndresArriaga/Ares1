@@ -396,6 +396,28 @@ def test_max_replay_streams_rejects_nonpositive(tmp_path: Path, streams: int) ->
         settings_from_layout(layout, max_replay_streams=streams)
 
 
+def test_phase5_planner_defaults(tmp_path: Path) -> None:
+    layout = make_valid_layout(tmp_path)
+    settings = settings_from_layout(layout)
+    assert settings.nvidia_planner_model_id == "nvidia/llama-3.3-nemotron-super-49b-v1"
+    assert settings.nvidia_planner_model_revision == "1.0"
+    assert settings.nvidia_planner_max_tokens == 4096
+    assert settings.nvidia_planner_temperature == 0.0
+    assert settings.planner_max_prompt_characters == 120000
+
+
+def test_planner_max_tokens_rejects_above_official_limit(tmp_path: Path) -> None:
+    layout = make_valid_layout(tmp_path)
+    with pytest.raises(ValidationError):
+        settings_from_layout(layout, nvidia_planner_max_tokens=20000)
+
+
+def test_planner_temperature_rejects_out_of_range(tmp_path: Path) -> None:
+    layout = make_valid_layout(tmp_path)
+    with pytest.raises(ValidationError):
+        settings_from_layout(layout, nvidia_planner_temperature=1.5)
+
+
 @pytest.mark.parametrize("heartbeat", [0, -1.0, float("nan"), float("inf")])
 def test_sse_heartbeat_rejects_invalid(tmp_path: Path, heartbeat: float) -> None:
     layout = make_valid_layout(tmp_path)

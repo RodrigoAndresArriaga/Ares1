@@ -17,6 +17,7 @@ _SUPPORTED_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICA
 
 DEFAULT_NVIDIA_EMBED_MODEL_ID = "nvidia/llama-nemotron-embed-1b-v2"
 DEFAULT_NVIDIA_RERANK_MODEL_ID = "nvidia/llama-nemotron-rerank-1b-v2"
+DEFAULT_NVIDIA_PLANNER_MODEL_ID = "nvidia/llama-3.3-nemotron-super-49b-v1"
 DEFAULT_NVIDIA_EMBED_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_NVIDIA_RERANK_BASE_URL = "https://ai.api.nvidia.com/v1"
 DEFAULT_EMBED_DIMENSIONS = 2048
@@ -148,6 +149,12 @@ class Settings(BaseSettings):
     nvidia_retry_backoff_seconds: float = Field(default=0.5)
     nvidia_embed_batch_size: int = Field(default=32)
 
+    nvidia_planner_model_id: str = Field(default=DEFAULT_NVIDIA_PLANNER_MODEL_ID)
+    nvidia_planner_model_revision: str | None = Field(default="1.0")
+    nvidia_planner_max_tokens: int = Field(default=4096)
+    nvidia_planner_temperature: float = Field(default=0.0)
+    planner_max_prompt_characters: int = Field(default=120000)
+
     procedure_embedding_index_path: Path = Field(
         default=Path("data/retrieval/procedure_embedding_index.json"),
     )
@@ -224,6 +231,34 @@ class Settings(BaseSettings):
     def _validate_embed_batch(cls, value: Any) -> int:
         return _positive_strict_int(value, env_name="ARES_NVIDIA_EMBED_BATCH_SIZE")
 
+    @field_validator("nvidia_planner_max_tokens", mode="before")
+    @classmethod
+    def _validate_planner_max_tokens(cls, value: Any) -> int:
+        parsed = _positive_strict_int(value, env_name="ARES_NVIDIA_PLANNER_MAX_TOKENS")
+        if parsed > 16384:
+            raise ValueError("ARES_NVIDIA_PLANNER_MAX_TOKENS must be <= 16384")
+        return parsed
+
+    @field_validator("planner_max_prompt_characters", mode="before")
+    @classmethod
+    def _validate_planner_prompt_limit(cls, value: Any) -> int:
+        return _positive_strict_int(value, env_name="ARES_PLANNER_MAX_PROMPT_CHARACTERS")
+
+    @field_validator("nvidia_planner_temperature", mode="before")
+    @classmethod
+    def _validate_planner_temperature(cls, value: Any) -> float:
+        if isinstance(value, bool):
+            raise ValueError("ARES_NVIDIA_PLANNER_TEMPERATURE must be between 0 and 1")
+        try:
+            number = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "ARES_NVIDIA_PLANNER_TEMPERATURE must be between 0 and 1",
+            ) from exc
+        if not math.isfinite(number) or number < 0 or number > 1:
+            raise ValueError("ARES_NVIDIA_PLANNER_TEMPERATURE must be between 0 and 1")
+        return number
+
     @field_validator("nvidia_embed_dimensions", mode="before")
     @classmethod
     def _validate_embed_dims(cls, value: Any) -> int:
@@ -262,6 +297,7 @@ class Settings(BaseSettings):
         "nvidia_rerank_base_url",
         "nvidia_embed_model_id",
         "nvidia_rerank_model_id",
+        "nvidia_planner_model_id",
         mode="before",
     )
     @classmethod

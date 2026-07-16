@@ -1,4 +1,5 @@
 # Phase 4 Step 3 production NVIDIA hosted NIM embed + rerank clients
+# Phase 5 Step 1 planner chat/completions on shared transport
 # contracts locked in backend/NVIDIA_NIM_CONTRACT.md; no real calls in unit tests
 from __future__ import annotations
 
@@ -6,6 +7,7 @@ import logging
 import math
 import time
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Literal, Protocol
 
 import httpx
@@ -25,6 +27,13 @@ logger = logging.getLogger("ares.nvidia_nim")
 
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 _AUTH_STATUS = frozenset({401, 403})
+
+
+@dataclass(frozen=True)
+class ChatCompletionResult:
+    content: str
+    finish_reason: str | None
+    model_id: str
 
 
 class RerankerProvider(Protocol):
@@ -168,6 +177,74 @@ class NvidiaNimClient:
                 f"NVIDIA NIM request failed: {_safe_error_message(last_exc)}",
             ) from last_exc
         raise NvidiaNimUnavailableError("NVIDIA NIM request failed")
+
+    def create_chat_completion(
+        self,
+        *,
+        model_id: str,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        stream: bool = False,
+    ) -> ChatCompletionResult:
+        payload: dict[str, object] = {
+            "model": model_id,
+            "messages": messages,
+            "stream": stream,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        url = f"{self._embed_base_url}/chat/completions"
+        raw = self._request_json(method="POST", url=url, payload=payload)
+        return self._parse_chat_completion(raw)
+
+    def _parse_chat_completion(
+        self,
+        raw: object,
+    ) -> ChatCompletionResult:
+        if not isinstance(raw, dict):
+            raise NvidiaNimResponseInvalidError(
+                "chat completion response must be an object",
+            )
+        response_model = raw.get("model")
+        if not isinstance(response_model, str) or not response_model.strip():
+            raise NvidiaNimResponseInvalidError(
+                "chat completion response missing model",
+            )
+        choices = raw.get("choices")
+        if not isinstance(choices, list):
+            raise NvidiaNimResponseInvalidError(
+                "chat completion response missing choices",
+            )
+        if len(choices) != 1:
+            raise NvidiaNimResponseInvalidError(
+                "chat completion response must contain exactly one choice",
+            )
+        choice = choices[0]
+        if not isinstance(choice, dict):
+            raise NvidiaNimResponseInvalidError(
+                "chat completion choice must be an object",
+            )
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            raise NvidiaNimResponseInvalidError(
+                "chat completion choice missing message",
+            )
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise NvidiaNimResponseInvalidError(
+                "chat completion assistant content must be a non-empty string",
+            )
+        finish_reason = choice.get("finish_reason")
+        if finish_reason is not None and not isinstance(finish_reason, str):
+            raise NvidiaNimResponseInvalidError(
+                "chat completion finish_reason must be a string or null",
+            )
+        return ChatCompletionResult(
+            content=content,
+            finish_reason=finish_reason,
+            model_id=response_model,
+        )
 
 
 class NvidiaNimEmbeddingProvider:

@@ -242,3 +242,73 @@ def test_rerank_rejects_nonfinite_and_count_mismatch() -> None:
     with _client(httpx.MockTransport(mismatch)) as client:
         with pytest.raises(RerankResponseInvalidError):
             client.reranker.rerank(query="q", documents=["a", "b"])
+
+
+CHAT_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+PLANNER_MODEL = "nvidia/llama-3.3-nemotron-super-49b-v1"
+
+
+def test_chat_completion_request_shape() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["auth"] = request.headers.get("Authorization")
+        captured["body"] = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(
+            200,
+            json={
+                "model": PLANNER_MODEL,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "{}"},
+                        "finish_reason": "stop",
+                    },
+                ],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            },
+        )
+
+    messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "user"},
+    ]
+    with _client(httpx.MockTransport(handler)) as client:
+        result = client.create_chat_completion(
+            model_id=PLANNER_MODEL,
+            messages=messages,
+            temperature=0.0,
+            max_tokens=4096,
+            stream=False,
+        )
+    assert captured["url"] == CHAT_URL
+    assert captured["auth"] == f"Bearer {API_KEY}"
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["model"] == PLANNER_MODEL
+    assert body["messages"] == messages
+    assert body["stream"] is False
+    assert body["temperature"] == 0.0
+    assert body["max_tokens"] == 4096
+    assert "response_format" not in body
+    assert result.content == "{}"
+    assert result.finish_reason == "stop"
+
+
+def test_chat_completion_auth_401_no_retry() -> None:
+    calls = {"count": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return httpx.Response(401, json={"error": "auth"})
+
+    with _client(httpx.MockTransport(handler)) as client:
+        with pytest.raises(NvidiaNimAuthError):
+            client.create_chat_completion(
+                model_id=PLANNER_MODEL,
+                messages=[{"role": "user", "content": "hi"}],
+                temperature=0.0,
+                max_tokens=10,
+            )
+    assert calls["count"] == 1
