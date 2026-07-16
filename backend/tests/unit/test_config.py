@@ -423,3 +423,27 @@ def test_sse_heartbeat_rejects_invalid(tmp_path: Path, heartbeat: float) -> None
     layout = make_valid_layout(tmp_path)
     with pytest.raises(ValidationError):
         settings_from_layout(layout, sse_heartbeat_seconds=heartbeat)
+
+
+def test_phase5_step2_planning_defaults(tmp_path: Path) -> None:
+    layout = make_valid_layout(tmp_path)
+    settings = settings_from_layout(layout)
+    assert settings.planner_retrieval_top_k == 10
+    assert settings.planner_retrieval_query_max_characters == 50000
+    assert settings.planning_attempts_dir.is_dir()
+
+
+def test_planner_retrieval_top_k_rejects_above_retrieval_max(tmp_path: Path) -> None:
+    layout = make_valid_layout(tmp_path)
+    with pytest.raises(ValidationError):
+        settings_from_layout(layout, planner_retrieval_top_k=11, retrieval_max_top_k=10)
+
+
+def test_planning_attempts_dir_created_and_writable(tmp_path: Path) -> None:
+    layout = make_valid_layout(tmp_path)
+    planning_dir = tmp_path / "custom_planning"
+    settings = settings_from_layout(layout, planning_attempts_dir=planning_dir)
+    assert settings.planning_attempts_dir == planning_dir.resolve()
+    probe = settings.planning_attempts_dir / "probe.txt"
+    probe.write_text("ok", encoding="utf-8")
+    assert probe.read_text(encoding="utf-8") == "ok"

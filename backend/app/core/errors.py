@@ -68,6 +68,16 @@ ARES_HTTP_STATUS_BY_CODE: Mapping[ErrorCode, int] = {
     ErrorCode.PLANNER_OUTPUT_INVALID: 502,
     ErrorCode.PLANNER_MODEL_MISMATCH: 502,
     ErrorCode.PLANNER_RESPONSE_INCOMPLETE: 502,
+    ErrorCode.PLANNING_NOT_AVAILABLE: 409,
+    ErrorCode.PLANNING_CONTEXT_MISMATCH: 500,
+    ErrorCode.PLANNING_IN_PROGRESS: 409,
+    ErrorCode.PLANNER_CANDIDATE_UNGROUNDED: 502,
+    ErrorCode.PLANNING_ATTEMPT_NOT_FOUND: 404,
+    ErrorCode.PLANNING_ATTEMPT_ALREADY_EXISTS: 409,
+    ErrorCode.PLANNING_ATTEMPT_CORRUPT: 500,
+    ErrorCode.PLANNING_ATTEMPT_STORAGE_ERROR: 500,
+    ErrorCode.PLANNING_ATTEMPT_ID_INVALID: 400,
+    ErrorCode.MISSION_RETRIEVAL_QUERY_TOO_LARGE: 500,
     ErrorCode.INTERNAL_SERVER_ERROR: 500,
 }
 
@@ -1227,6 +1237,256 @@ class PlannerResponseIncompleteError(AresBackendError):
         if self.run_id == run_id:
             return self
         return type(self)(self.message, run_id=run_id)
+
+
+class PlanningNotAvailableError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Mission planning is not available for this session state",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_NOT_AVAILABLE,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class PlanningContextMismatchError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planning context sources disagree",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_CONTEXT_MISMATCH,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class PlanningInProgressError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planning operation already in progress for this session",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_IN_PROGRESS,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class PlannerCandidateUngroundedError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planner candidate action lacks retrieved evidence support",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNER_CANDIDATE_UNGROUNDED,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class PlanningAttemptNotFoundError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planning attempt not found",
+        *,
+        attempt_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_ATTEMPT_NOT_FOUND,
+            run_id=run_id,
+        )
+        self.attempt_id = attempt_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            attempt_id=self.attempt_id,
+            run_id=run_id,
+        )
+
+
+class PlanningAttemptAlreadyExistsError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planning attempt already exists",
+        *,
+        attempt_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_ATTEMPT_ALREADY_EXISTS,
+            run_id=run_id,
+        )
+        self.attempt_id = attempt_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            attempt_id=self.attempt_id,
+            run_id=run_id,
+        )
+
+
+class PlanningAttemptCorruptError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planning attempt artifact is corrupt",
+        *,
+        attempt_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_ATTEMPT_CORRUPT,
+            run_id=run_id,
+        )
+        self.attempt_id = attempt_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            attempt_id=self.attempt_id,
+            run_id=run_id,
+        )
+
+
+class PlanningAttemptStorageError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planning attempt storage failed",
+        *,
+        attempt_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_ATTEMPT_STORAGE_ERROR,
+            run_id=run_id,
+        )
+        self.attempt_id = attempt_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            attempt_id=self.attempt_id,
+            run_id=run_id,
+        )
+
+
+class InvalidPlanningAttemptIdError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Planning attempt ID is invalid",
+        *,
+        attempt_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.PLANNING_ATTEMPT_ID_INVALID,
+            run_id=run_id,
+        )
+        self.attempt_id = attempt_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            attempt_id=self.attempt_id,
+            run_id=run_id,
+        )
+
+
+class MissionRetrievalQueryTooLargeError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Mission retrieval query exceeds configured maximum size",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.MISSION_RETRIEVAL_QUERY_TOO_LARGE,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
 
 
 # register centralized typed and unexpected exception handlers

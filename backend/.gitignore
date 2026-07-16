@@ -14,3 +14,5 @@ data/sessions/*
 !data/sessions/.gitkeep
 data/retrieval/*
 !data/retrieval/.gitkeep
+data/planning/*
+!data/planning/.gitkeep

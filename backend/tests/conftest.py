@@ -434,11 +434,200 @@ def make_planner_prompt_input(
 ) -> Any:
     from app.schemas.planner import PlannerPromptInput
 
-    retrieval_kwargs = retrieval_overrides or {}
+    retrieval_kwargs = dict(retrieval_overrides or {})
+    if "matches" in retrieval_kwargs:
+        match_count = len(retrieval_kwargs["matches"])
+        retrieval_kwargs.setdefault("returned_count", match_count)
+        retrieval_kwargs.setdefault("requested_top_k", match_count)
     return PlannerPromptInput(
         mission_context=make_planner_mission_context(
             baseline_result_data,
             sample_index=sample_index,
         ),
         retrieval_result=make_planner_retrieval_result(**retrieval_kwargs),
+    )
+
+
+PLANNING_ATTEMPT_ID = "00000000-0000-4000-8000-000000000020"
+
+
+def make_planning_root(tmp_path: Path) -> Path:
+    root = tmp_path / "planning"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def make_planning_attempt_store(tmp_path: Path) -> Any:
+    from app.services.planning_attempt_store import PlanningAttemptStore
+
+    return PlanningAttemptStore(make_planning_root(tmp_path))
+
+
+def _make_procedure_chunk(
+    *,
+    chunk_id: str,
+    procedure_id: str,
+    allowed_actions: tuple[Any, ...],
+    content: str,
+) -> Any:
+    from app.schemas.retrieval import (
+        CORPUS_SCHEMA_VERSION,
+        EvidenceReference,
+        ProcedureChunk,
+        ProcedureStatus,
+        SourceClassification,
+    )
+
+    sha_b = "b" * 64
+    sha_c = "c" * 64
+    return ProcedureChunk.model_validate(
+        {
+            "schema_version": CORPUS_SCHEMA_VERSION,
+            "chunk_id": chunk_id,
+            "procedure_id": procedure_id,
+            "procedure_title": f"Procedure {procedure_id}",
+            "manual_path": "docs/procedures/manuals/test.md",
+            "section_path": ("Purpose",),
+            "section_title": "Purpose",
+            "chunk_index": 0,
+            "content": content,
+            "embedding_text": f"Procedure: {procedure_id}\n\n{content}",
+            "content_sha256": sha_b,
+            "manual_sha256": sha_c,
+            "source_classifications": (SourceClassification.ARES_ASSUMPTION,),
+            "evidence_references": (
+                EvidenceReference(
+                    evidence_id="EVID-ARES_ASM-001",
+                    classification=SourceClassification.ARES_ASSUMPTION,
+                    source_title="Test",
+                    locator="unit-test",
+                    supports="Unit test evidence.",
+                    url="",
+                ),
+            ),
+            "allowed_actions": allowed_actions,
+            "procedure_status": ProcedureStatus.PARTIAL_EVIDENCE,
+        },
+    )
+
+
+def make_multi_action_retrieval_result(**overrides: Any) -> Any:
+    from app.schemas.actions import ActionType
+    from app.schemas.embedding import EmbeddingModelDescriptor, RerankerModelDescriptor
+    from app.schemas.retrieval_query import (
+        RETRIEVAL_QUERY_SCHEMA_VERSION,
+        ProcedureRetrievalMatch,
+        ProcedureRetrievalResult,
+    )
+
+    sha_d = "d" * 64
+    sha_e = "e" * 64
+    chunks = [
+        (
+            "a" * 64,
+            "ARES-PROC-OXY-001",
+            (ActionType.ISOLATE_MODULE,),
+            "Isolate affected module.",
+        ),
+        (
+            "f" * 64,
+            "ARES-PROC-PWR-001",
+            (ActionType.REDUCE_POWER_LOAD,),
+            "Reduce discretionary power load.",
+        ),
+        (
+            "1" * 64,
+            "ARES-PROC-SOLAR-001",
+            (ActionType.REPAIR_SOLAR_ARRAY,),
+            "Repair degraded solar array via EVA.",
+        ),
+    ]
+    matches = []
+    for rank, (chunk_id, procedure_id, allowed, content) in enumerate(chunks, start=1):
+        chunk = _make_procedure_chunk(
+            chunk_id=chunk_id,
+            procedure_id=procedure_id,
+            allowed_actions=allowed,
+            content=content,
+        )
+        matches.append(
+            ProcedureRetrievalMatch.model_validate(
+                {
+                    "rank": rank,
+                    "similarity": 0.9 - (rank * 0.01),
+                    "rerank_score": 2.0 + rank,
+                    "index_position": rank - 1,
+                    "chunk_id": chunk.chunk_id,
+                    "chunk": chunk,
+                },
+            ),
+        )
+    payload: dict[str, Any] = {
+        "schema_version": RETRIEVAL_QUERY_SCHEMA_VERSION,
+        "query": "deterministic mission retrieval query",
+        "requested_top_k": len(matches),
+        "returned_count": len(matches),
+        "embedding_model": EmbeddingModelDescriptor(
+            provider="nvidia",
+            model_id="nvidia/llama-nemotron-embed-1b-v2",
+            model_revision=None,
+            dimensions=2048,
+        ),
+        "reranker_model": RerankerModelDescriptor(
+            provider="nvidia",
+            model_id="nvidia/llama-nemotron-rerank-1b-v2",
+            model_revision=None,
+        ),
+        "corpus_sha256": sha_d,
+        "index_sha256": sha_e,
+        "matches": tuple(matches),
+    }
+    payload.update(overrides)
+    return ProcedureRetrievalResult.model_validate(payload)
+
+
+def make_grounded_recovery_plan(sample_plan_data: Any | None = None) -> Any:
+    from app.schemas.plan import RecoveryPlan
+
+    if sample_plan_data is not None:
+        return RecoveryPlan.model_validate(sample_plan_data)
+    return RecoveryPlan.model_validate(
+        {
+            "plan_id": "grounded_plan",
+            "summary": "Isolate lab and reduce discretionary load",
+            "actions": [
+                {"type": "isolate_module", "start_min": 0, "module": "lab"},
+                {
+                    "type": "reduce_power_load",
+                    "start_min": 0,
+                    "percent": 50.0,
+                    "load_groups": ["discretionary"],
+                },
+            ],
+            "rationale": "Grounded by retrieval evidence",
+            "expected_risk": "Temporary load reduction",
+            "constraints_checked": ["unit_test"],
+        },
+    )
+
+
+def make_planner_generation_result(
+    *,
+    prompt_package: Any,
+    plan: Any,
+) -> Any:
+    import hashlib
+
+    from app.schemas.planner import PLANNER_SCHEMA_VERSION, PlannerGenerationResult
+
+    response_text = '{"plan_id":"grounded_plan"}'
+    return PlannerGenerationResult(
+        schema_version=PLANNER_SCHEMA_VERSION,
+        model_metadata=prompt_package.model_metadata,
+        prompt_sha256=prompt_package.prompt_sha256,
+        response_sha256=hashlib.sha256(response_text.encode("utf-8")).hexdigest(),
+        evidence_chunk_ids=prompt_package.evidence_chunk_ids,
+        evidence_procedure_ids=prompt_package.evidence_procedure_ids,
+        plan=plan,
+        finish_reason="stop",
     )

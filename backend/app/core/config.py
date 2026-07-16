@@ -154,6 +154,9 @@ class Settings(BaseSettings):
     nvidia_planner_max_tokens: int = Field(default=4096)
     nvidia_planner_temperature: float = Field(default=0.0)
     planner_max_prompt_characters: int = Field(default=120000)
+    planning_attempts_dir: Path = Field(default=Path("data/planning"))
+    planner_retrieval_top_k: int = Field(default=10)
+    planner_retrieval_query_max_characters: int = Field(default=50000)
 
     procedure_embedding_index_path: Path = Field(
         default=Path("data/retrieval/procedure_embedding_index.json"),
@@ -244,6 +247,19 @@ class Settings(BaseSettings):
     def _validate_planner_prompt_limit(cls, value: Any) -> int:
         return _positive_strict_int(value, env_name="ARES_PLANNER_MAX_PROMPT_CHARACTERS")
 
+    @field_validator("planner_retrieval_top_k", mode="before")
+    @classmethod
+    def _validate_planner_retrieval_top_k(cls, value: Any) -> int:
+        return _positive_strict_int(value, env_name="ARES_PLANNER_RETRIEVAL_TOP_K")
+
+    @field_validator("planner_retrieval_query_max_characters", mode="before")
+    @classmethod
+    def _validate_planner_query_limit(cls, value: Any) -> int:
+        return _positive_strict_int(
+            value,
+            env_name="ARES_PLANNER_RETRIEVAL_QUERY_MAX_CHARACTERS",
+        )
+
     @field_validator("nvidia_planner_temperature", mode="before")
     @classmethod
     def _validate_planner_temperature(cls, value: Any) -> float:
@@ -313,6 +329,7 @@ class Settings(BaseSettings):
         scenario_dir = resolve_against_backend(self.scenario_dir)
         runs_dir = resolve_against_backend(self.runs_dir)
         sessions_dir = resolve_against_backend(self.sessions_dir)
+        planning_attempts_dir = resolve_against_backend(self.planning_attempts_dir)
         index_path = resolve_against_backend(self.procedure_embedding_index_path)
         manifest_path = resolve_against_backend(self.procedure_manifest_path)
         manuals_root = resolve_against_backend(self.procedure_manuals_root)
@@ -334,6 +351,10 @@ class Settings(BaseSettings):
 
         ensure_writable_runs_dir(runs_dir)
         ensure_writable_dir(sessions_dir, env_name="ARES_SESSIONS_DIR")
+        ensure_writable_dir(
+            planning_attempts_dir,
+            env_name="ARES_PLANNING_ATTEMPTS_DIR",
+        )
         ensure_writable_dir(index_path.parent, env_name="ARES_PROCEDURE_EMBEDDING_INDEX_PATH")
 
         if self.replay_min_interval_ms <= 0:
@@ -356,6 +377,10 @@ class Settings(BaseSettings):
             raise ValueError(
                 "ARES_RETRIEVAL_DEFAULT_TOP_K must be <= ARES_RETRIEVAL_MAX_TOP_K"
             )
+        if self.planner_retrieval_top_k > self.retrieval_max_top_k:
+            raise ValueError(
+                "ARES_PLANNER_RETRIEVAL_TOP_K must be <= ARES_RETRIEVAL_MAX_TOP_K"
+            )
         if self.retrieval_rerank_candidate_count < self.retrieval_max_top_k:
             raise ValueError(
                 "ARES_RETRIEVAL_RERANK_CANDIDATE_COUNT must be >= "
@@ -372,6 +397,7 @@ class Settings(BaseSettings):
         object.__setattr__(self, "scenario_dir", scenario_dir)
         object.__setattr__(self, "runs_dir", runs_dir)
         object.__setattr__(self, "sessions_dir", sessions_dir)
+        object.__setattr__(self, "planning_attempts_dir", planning_attempts_dir)
         object.__setattr__(self, "procedure_embedding_index_path", index_path)
         object.__setattr__(self, "procedure_manifest_path", manifest_path)
         object.__setattr__(self, "procedure_manuals_root", manuals_root)

@@ -14,13 +14,19 @@ from app.schemas.mission import (
     MissionSession,
     MissionSessionStatus,
 )
-from app.schemas.plan import RecoveryPlan
 from app.schemas.planner import (
     PlannerGenerationResult,
     PlannerMissionContext,
     PlannerModelMetadata,
     PlannerPromptInput,
     PlannerPromptPackage,
+)
+from app.schemas.planning import (
+    ActionEvidenceSupport,
+    PlannerCandidatePreflight,
+    PlanningAttempt,
+    PlanningAttemptStatus,
+    PlanningGenerationResponse,
 )
 from app.schemas.replay import (
     CurrentTelemetryResponse,
@@ -46,6 +52,11 @@ __all__ = [
     "ActionType",
     "RecoveryAction",
     "RecoveryPlan",
+    "ActionEvidenceSupport",
+    "PlannerCandidatePreflight",
+    "PlanningAttempt",
+    "PlanningAttemptStatus",
+    "PlanningGenerationResponse",
     "CrewTelemetry",
     "CrewHealthStatus",
     "CrewAlarmType",
