@@ -1,5 +1,5 @@
 # Phase 4 Step 3 retrieval query / result contracts
-# in-memory cosine retrieval only; no routes or cross-encoder stages
+# cosine candidates + mandatory rerank; no vectors or NIM payloads exposed
 from __future__ import annotations
 
 from typing import Annotated
@@ -7,10 +7,10 @@ from typing import Annotated
 from pydantic import BaseModel, Field, StrictFloat, model_validator
 
 from app.schemas.common import CONTRACT_CONFIG, StrictInt
-from app.schemas.embedding import EmbeddingModelDescriptor
+from app.schemas.embedding import EmbeddingModelDescriptor, RerankerModelDescriptor
 from app.schemas.retrieval import ProcedureChunk, Sha256Hex
 
-RETRIEVAL_QUERY_SCHEMA_VERSION = "1.0.0"
+RETRIEVAL_QUERY_SCHEMA_VERSION = "1.1.0"
 
 NonEmptyStr = Annotated[str, Field(min_length=1)]
 
@@ -20,6 +20,7 @@ class ProcedureRetrievalMatch(BaseModel):
 
     rank: StrictInt = Field(ge=1)
     similarity: StrictFloat
+    rerank_score: StrictFloat
     index_position: StrictInt = Field(ge=0)
     chunk_id: Sha256Hex
     chunk: ProcedureChunk
@@ -39,6 +40,7 @@ class ProcedureRetrievalResult(BaseModel):
     requested_top_k: StrictInt = Field(ge=1)
     returned_count: StrictInt = Field(ge=0)
     embedding_model: EmbeddingModelDescriptor
+    reranker_model: RerankerModelDescriptor
     corpus_sha256: Sha256Hex
     index_sha256: Sha256Hex
     matches: tuple[ProcedureRetrievalMatch, ...]
@@ -51,3 +53,10 @@ class ProcedureRetrievalResult(BaseModel):
             if match.rank != expected_rank:
                 raise ValueError("match ranks must be contiguous starting at 1")
         return self
+
+
+class RetrievalQueryRequest(BaseModel):
+    model_config = CONTRACT_CONFIG
+
+    query: NonEmptyStr
+    top_k: StrictInt | None = Field(default=None, ge=1)

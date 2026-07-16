@@ -53,6 +53,16 @@ ARES_HTTP_STATUS_BY_CODE: Mapping[ErrorCode, int] = {
     ErrorCode.EMBEDDING_VALIDATION_ERROR: 400,
     ErrorCode.EMBEDDING_MODEL_MISMATCH: 400,
     ErrorCode.RETRIEVAL_QUERY_INVALID: 400,
+    ErrorCode.RETRIEVAL_INDEX_NOT_FOUND: 503,
+    ErrorCode.RETRIEVAL_INDEX_CORRUPT: 500,
+    ErrorCode.RETRIEVAL_INDEX_STALE: 503,
+    ErrorCode.RETRIEVAL_INDEX_UNAVAILABLE: 503,
+    ErrorCode.NVIDIA_NIM_AUTH_ERROR: 500,
+    ErrorCode.NVIDIA_NIM_RATE_LIMITED: 503,
+    ErrorCode.NVIDIA_NIM_TIMEOUT: 504,
+    ErrorCode.NVIDIA_NIM_UNAVAILABLE: 502,
+    ErrorCode.NVIDIA_NIM_RESPONSE_INVALID: 502,
+    ErrorCode.RERANK_RESPONSE_INVALID: 502,
     ErrorCode.INTERNAL_SERVER_ERROR: 500,
 }
 
@@ -920,6 +930,196 @@ class RetrievalQueryInvalidError(AresBackendError):
         super().__init__(
             message,
             code=ErrorCode.RETRIEVAL_QUERY_INVALID,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class RetrievalIndexNotFoundError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Procedure embedding index not found",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.RETRIEVAL_INDEX_NOT_FOUND,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class RetrievalIndexCorruptError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Procedure embedding index is corrupt",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.RETRIEVAL_INDEX_CORRUPT,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class RetrievalIndexStaleError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Procedure embedding index is stale",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.RETRIEVAL_INDEX_STALE,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class RetrievalIndexUnavailableError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Procedure retrieval index is unavailable",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.RETRIEVAL_INDEX_UNAVAILABLE,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class NvidiaNimAuthError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "NVIDIA NIM authentication failed",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.NVIDIA_NIM_AUTH_ERROR,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class NvidiaNimRateLimitedError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "NVIDIA NIM rate limited",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.NVIDIA_NIM_RATE_LIMITED,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class NvidiaNimTimeoutError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "NVIDIA NIM request timed out",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.NVIDIA_NIM_TIMEOUT,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class NvidiaNimUnavailableError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "NVIDIA NIM service unavailable",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.NVIDIA_NIM_UNAVAILABLE,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class NvidiaNimResponseInvalidError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "NVIDIA NIM response is invalid",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.NVIDIA_NIM_RESPONSE_INVALID,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class RerankResponseInvalidError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Rerank response is invalid",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.RERANK_RESPONSE_INVALID,
             run_id=run_id,
         )
 

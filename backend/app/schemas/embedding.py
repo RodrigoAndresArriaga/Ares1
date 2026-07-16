@@ -23,6 +23,14 @@ class EmbeddingModelDescriptor(BaseModel):
     dimensions: StrictInt = Field(gt=0)
 
 
+class RerankerModelDescriptor(BaseModel):
+    model_config = CONTRACT_CONFIG
+
+    provider: NonEmptyStr
+    model_id: NonEmptyStr
+    model_revision: str | None = None
+
+
 class EmbeddedChunk(BaseModel):
     model_config = CONTRACT_CONFIG
 
@@ -45,6 +53,7 @@ class EmbeddingIndexSnapshot(BaseModel):
 
     schema_version: NonEmptyStr
     corpus_sha256: Sha256Hex
+    manifest_sha256: Sha256Hex
     embedding_model: EmbeddingModelDescriptor
     vector_dimensions: StrictInt = Field(gt=0)
     embedded_chunks: tuple[EmbeddedChunk, ...]

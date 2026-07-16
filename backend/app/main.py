@@ -11,9 +11,19 @@ from app.api.router import api_router
 from app.api.routes.health import evaluate_readiness
 from app.api.sse import ReplayStreamLimiter
 from app.core.config import Settings, get_settings
-from app.core.errors import register_exception_handlers
+from app.core.errors import (
+    RetrievalIndexCorruptError,
+    RetrievalIndexNotFoundError,
+    RetrievalIndexStaleError,
+    RetrievalIndexUnavailableError,
+    register_exception_handlers,
+)
 from app.core.logging import configure_logging
+from app.integrations.nvidia_nim import NvidiaNimClient
+from app.schemas.embedding import EmbeddingModelDescriptor, RerankerModelDescriptor
 from app.services.mission_lifecycle_service import MissionLifecycleService
+from app.services.procedure_embedding_index_store import ProcedureEmbeddingIndexStore
+from app.services.procedure_retrieval import ProcedureRetrievalService
 from app.services.run_store import RunStore
 from app.services.scenario_registry import ScenarioRegistry
 from app.services.session_store import SessionStore
@@ -22,6 +32,68 @@ from app.services.simulator_client import SimulatorClient
 from app.services.telemetry_replay_service import TelemetryReplayService
 
 logger = logging.getLogger("ares.main")
+
+
+def _build_retrieval_resources(
+    settings: Settings,
+) -> tuple[
+    NvidiaNimClient | None,
+    ProcedureEmbeddingIndexStore,
+    ProcedureRetrievalService | None,
+]:
+    store = ProcedureEmbeddingIndexStore(
+        index_path=settings.procedure_embedding_index_path,
+    )
+    if settings.nvidia_api_key is None:
+        logger.warning(
+            "retrieval unavailable: ARES_NVIDIA_API_KEY not configured",
+        )
+        return None, store, None
+
+    embed_model = EmbeddingModelDescriptor(
+        provider="nvidia",
+        model_id=settings.nvidia_embed_model_id,
+        model_revision=settings.nvidia_embed_model_revision,
+        dimensions=settings.nvidia_embed_dimensions,
+    )
+    rerank_model = RerankerModelDescriptor(
+        provider="nvidia",
+        model_id=settings.nvidia_rerank_model_id,
+        model_revision=settings.nvidia_rerank_model_revision,
+    )
+    client = NvidiaNimClient(
+        api_key=settings.nvidia_api_key.get_secret_value(),
+        embed_base_url=settings.nvidia_embed_base_url,
+        rerank_base_url=settings.nvidia_rerank_base_url,
+        embed_model=embed_model,
+        rerank_model=rerank_model,
+        timeout_seconds=settings.nvidia_request_timeout_seconds,
+        max_retries=settings.nvidia_max_retries,
+        retry_backoff_seconds=settings.nvidia_retry_backoff_seconds,
+    )
+    try:
+        index = store.load_compatible(expected_model=embed_model)
+    except (
+        RetrievalIndexNotFoundError,
+        RetrievalIndexCorruptError,
+        RetrievalIndexStaleError,
+        RetrievalIndexUnavailableError,
+    ) as exc:
+        logger.warning(
+            "retrieval unavailable: %s",
+            exc.message,
+        )
+        client.close()
+        return None, store, None
+
+    service = ProcedureRetrievalService(
+        index=index,
+        provider=client.embedding_provider,
+        reranker=client.reranker,
+        rerank_candidate_count=settings.retrieval_rerank_candidate_count,
+        max_top_k=settings.retrieval_max_top_k,
+    )
+    return client, store, service
 
 
 @asynccontextmanager
@@ -66,6 +138,18 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         capacity=settings.max_replay_streams,
     )
 
+    if getattr(app.state, "procedure_retrieval_service", None) is None:
+        nim_client, index_store, retrieval_service = _build_retrieval_resources(
+            settings,
+        )
+        app.state.nvidia_nim_client = nim_client
+        app.state.procedure_embedding_index_store = index_store
+        app.state.procedure_retrieval_service = retrieval_service
+    elif getattr(app.state, "procedure_embedding_index_store", None) is None:
+        app.state.procedure_embedding_index_store = ProcedureEmbeddingIndexStore(
+            index_path=settings.procedure_embedding_index_path,
+        )
+
     summary = await app.state.mission_lifecycle_service.reconcile_interrupted_sessions()
     logger.info(
         "startup reconciliation complete sessions_seen=%s "
@@ -85,13 +169,19 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             readiness.reason_code,
             readiness.detail,
         )
-    yield
+    try:
+        yield
+    finally:
+        nim_client = getattr(app.state, "nvidia_nim_client", None)
+        if nim_client is not None:
+            nim_client.close()
 
 
 def create_app(
     settings_override: Settings | None = None,
     *,
     simulation_service_override: SimulationService | None = None,
+    procedure_retrieval_service_override: ProcedureRetrievalService | None = None,
 ) -> FastAPI:
     settings = settings_override if settings_override is not None else get_settings()
     configure_logging(settings)
@@ -109,6 +199,8 @@ def create_app(
     app.state.settings = settings
     if simulation_service_override is not None:
         app.state.simulation_service = simulation_service_override
+    if procedure_retrieval_service_override is not None:
+        app.state.procedure_retrieval_service = procedure_retrieval_service_override
     register_exception_handlers(app)
     app.include_router(api_router, prefix="/api")
     return app

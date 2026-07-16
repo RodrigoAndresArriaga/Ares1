@@ -140,6 +140,7 @@ class EmbeddingIndexBuilder:
 
         index_sha256 = self._compute_index_sha256(
             corpus_sha256=corpus.corpus_sha256,
+            manifest_sha256=corpus.manifest_sha256,
             model=model,
             embedded_identity=identity_chunks,
         )
@@ -147,6 +148,7 @@ class EmbeddingIndexBuilder:
             {
                 "schema_version": EMBEDDING_SCHEMA_VERSION,
                 "corpus_sha256": corpus.corpus_sha256,
+                "manifest_sha256": corpus.manifest_sha256,
                 "embedding_model": model,
                 "vector_dimensions": model.dimensions,
                 "embedded_chunks": embedded,
@@ -162,7 +164,7 @@ class EmbeddingIndexBuilder:
         for start in range(0, len(texts), self._batch_size):
             batch = texts[start : start + self._batch_size]
             try:
-                raw = self._provider.embed(batch)
+                raw = self._provider.embed(batch, input_type="passage")
             except EmbeddingValidationError:
                 raise
             except EmbeddingProviderError:
@@ -211,12 +213,14 @@ class EmbeddingIndexBuilder:
         self,
         *,
         corpus_sha256: str,
+        manifest_sha256: str,
         model: EmbeddingModelDescriptor,
         embedded_identity: list[dict[str, object]],
     ) -> str:
         identity = {
             "schema_version": EMBEDDING_SCHEMA_VERSION,
             "corpus_sha256": corpus_sha256,
+            "manifest_sha256": manifest_sha256,
             "embedding_model": model.model_dump(mode="json"),
             "vector_dimensions": model.dimensions,
             "embedded_chunks": embedded_identity,

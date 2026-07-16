@@ -127,6 +127,7 @@ def test_snapshot_round_trip_and_consistency() -> None:
     snap = EmbeddingIndexSnapshot(
         schema_version=EMBEDDING_SCHEMA_VERSION,
         corpus_sha256=_SHA,
+        manifest_sha256=_SHA_C,
         embedding_model=_model(),
         vector_dimensions=4,
         embedded_chunks=(embedded,),
@@ -139,6 +140,7 @@ def test_snapshot_round_trip_and_consistency() -> None:
         EmbeddingIndexSnapshot(
             schema_version=EMBEDDING_SCHEMA_VERSION,
             corpus_sha256=_SHA,
+            manifest_sha256=_SHA_C,
             embedding_model=_model(),
             vector_dimensions=4,
             embedded_chunks=(embedded,),

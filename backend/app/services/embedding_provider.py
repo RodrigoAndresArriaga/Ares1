@@ -1,21 +1,28 @@
 # Phase 4 Step 2 embedding provider abstraction
-# deterministic fake only; no remote embedding clients
+# deterministic fake + Protocol; production NIM lives under integrations
 from __future__ import annotations
 
 import hashlib
 import math
 import struct
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Literal, Protocol
 
 from app.schemas.embedding import EmbeddingModelDescriptor
+
+EmbeddingInputType = Literal["passage", "query"]
 
 
 class EmbeddingProvider(Protocol):
     @property
     def model(self) -> EmbeddingModelDescriptor: ...
 
-    def embed(self, texts: Sequence[str]) -> Sequence[Sequence[float]]: ...
+    def embed(
+        self,
+        texts: Sequence[str],
+        *,
+        input_type: EmbeddingInputType = "passage",
+    ) -> Sequence[Sequence[float]]: ...
 
 
 class DeterministicFakeEmbeddingProvider:
@@ -27,7 +34,13 @@ class DeterministicFakeEmbeddingProvider:
     def model(self) -> EmbeddingModelDescriptor:
         return self._model
 
-    def embed(self, texts: Sequence[str]) -> Sequence[Sequence[float]]:
+    def embed(
+        self,
+        texts: Sequence[str],
+        *,
+        input_type: EmbeddingInputType = "passage",
+    ) -> Sequence[Sequence[float]]:
+        _ = input_type
         return tuple(self._vector_for(text) for text in texts)
 
     def _vector_for(self, text: str) -> tuple[float, ...]:

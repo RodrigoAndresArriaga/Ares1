@@ -1,5 +1,4 @@
-# Phase 4 Step 3 deterministic query embedding and cosine retrieval
-# in-memory over EmbeddingIndexSnapshot; no routes or persistence
+# Phase 4 Step 3 query embedding, cosine candidates, mandatory NVIDIA rerank
 from __future__ import annotations
 
 import logging
@@ -10,10 +9,21 @@ from app.core.errors import (
     EmbeddingModelMismatchError,
     EmbeddingProviderError,
     EmbeddingValidationError,
+    NvidiaNimAuthError,
+    NvidiaNimRateLimitedError,
+    NvidiaNimResponseInvalidError,
+    NvidiaNimTimeoutError,
+    NvidiaNimUnavailableError,
+    RerankResponseInvalidError,
     RetrievalQueryInvalidError,
 )
 from app.core.logging import log_run_event
-from app.schemas.embedding import EmbeddingIndexSnapshot, EmbeddingModelDescriptor
+from app.integrations.nvidia_nim import RerankerProvider
+from app.schemas.embedding import (
+    EmbeddingIndexSnapshot,
+    EmbeddingModelDescriptor,
+    RerankerModelDescriptor,
+)
 from app.schemas.retrieval_query import (
     RETRIEVAL_QUERY_SCHEMA_VERSION,
     ProcedureRetrievalMatch,
@@ -40,24 +50,38 @@ def _dot_product(left: Sequence[float], right: Sequence[float]) -> float:
 
 
 class ProcedureRetrievalService:
-    # Rank index chunks by cosine similarity to an embedded query.
+    # Rank index chunks by cosine candidates then mandatory rerank scores.
     def __init__(
         self,
         *,
         index: EmbeddingIndexSnapshot,
         provider: EmbeddingProvider,
+        reranker: RerankerProvider,
+        rerank_candidate_count: int,
+        max_top_k: int,
     ) -> None:
+        if max_top_k < 1:
+            raise RetrievalQueryInvalidError("max_top_k must be >= 1")
+        if rerank_candidate_count < max_top_k:
+            raise RetrievalQueryInvalidError(
+                "rerank_candidate_count must be >= max_top_k",
+            )
         self._index = index
         self._provider = provider
+        self._reranker = reranker
+        self._rerank_candidate_count = rerank_candidate_count
+        self._max_top_k = max_top_k
 
     def retrieve(
         self,
         *,
         query: str,
-        top_k: int,
+        top_k: int | None = None,
     ) -> ProcedureRetrievalResult:
-        stripped = self._validate_request(query=query, top_k=top_k)
+        resolved_top_k = self._max_top_k if top_k is None else top_k
+        stripped = self._validate_request(query=query, top_k=resolved_top_k)
         model = self._provider.model
+        reranker_model = self._reranker.model
         log_run_event(
             logger,
             logging.INFO,
@@ -66,10 +90,16 @@ class ProcedureRetrievalService:
             index_sha256=self._index.index_sha256,
             corpus_sha256=self._index.corpus_sha256,
             model_id=model.model_id,
-            top_k=top_k,
+            reranker_model_id=reranker_model.model_id,
+            top_k=resolved_top_k,
         )
         try:
-            result = self._retrieve(query=stripped, top_k=top_k, model=model)
+            result = self._retrieve(
+                query=stripped,
+                top_k=resolved_top_k,
+                model=model,
+                reranker_model=reranker_model,
+            )
         except (
             RetrievalQueryInvalidError,
             EmbeddingModelMismatchError,
@@ -84,7 +114,7 @@ class ProcedureRetrievalService:
                 index_sha256=self._index.index_sha256,
                 corpus_sha256=self._index.corpus_sha256,
                 model_id=model.model_id,
-                top_k=top_k,
+                top_k=resolved_top_k,
             )
             raise
         log_run_event(
@@ -106,6 +136,7 @@ class ProcedureRetrievalService:
         query: str,
         top_k: int,
         model: EmbeddingModelDescriptor,
+        reranker_model: RerankerModelDescriptor,
     ) -> ProcedureRetrievalResult:
         self._assert_model_compatible(model)
         query_vector = self._embed_query(query)
@@ -127,14 +158,53 @@ class ProcedureRetrievalService:
 
         # descending similarity, then ascending original index position
         scored.sort(key=lambda item: (-item[0], item[1]))
-        limit = min(top_k, len(scored))
+        candidate_limit = min(self._rerank_candidate_count, len(scored))
+        candidates = scored[:candidate_limit]
+        if not candidates:
+            return ProcedureRetrievalResult(
+                schema_version=RETRIEVAL_QUERY_SCHEMA_VERSION,
+                query=query,
+                requested_top_k=top_k,
+                returned_count=0,
+                embedding_model=self._index.embedding_model,
+                reranker_model=reranker_model,
+                corpus_sha256=self._index.corpus_sha256,
+                index_sha256=self._index.index_sha256,
+                matches=(),
+            )
+
+        candidate_texts = [
+            self._index.embedded_chunks[position].chunk.embedding_text
+            for _, position in candidates
+        ]
+        rerank_scores = self._rerank(query=query, documents=candidate_texts)
+        if len(rerank_scores) != len(candidates):
+            raise EmbeddingValidationError(
+                "reranker returned wrong score count",
+            )
+
+        reranked: list[tuple[float, float, int]] = []
+        for (similarity, position), rerank_score in zip(
+            candidates,
+            rerank_scores,
+            strict=True,
+        ):
+            reranked.append((float(rerank_score), float(similarity), position))
+
+        # descending rerank, then descending similarity, then ascending position
+        reranked.sort(key=lambda item: (-item[0], -item[1], item[2]))
+        limit = min(top_k, len(reranked))
         matches: list[ProcedureRetrievalMatch] = []
-        for rank, (similarity, position) in enumerate(scored[:limit], start=1):
+        for rank, (rerank_score, similarity, position) in enumerate(
+            reranked[:limit],
+            start=1,
+        ):
             embedded = self._index.embedded_chunks[position]
             matches.append(
                 ProcedureRetrievalMatch(
                     rank=rank,
-                    similarity=float(similarity),
+                    similarity=similarity,
+                    rerank_score=rerank_score,
                     index_position=position,
                     chunk_id=embedded.chunk.chunk_id,
                     chunk=embedded.chunk,
@@ -147,6 +217,7 @@ class ProcedureRetrievalService:
             requested_top_k=top_k,
             returned_count=len(matches),
             embedding_model=self._index.embedding_model,
+            reranker_model=reranker_model,
             corpus_sha256=self._index.corpus_sha256,
             index_sha256=self._index.index_sha256,
             matches=tuple(matches),
@@ -162,6 +233,10 @@ class ProcedureRetrievalService:
             raise RetrievalQueryInvalidError("top_k must be a positive integer")
         if top_k <= 0:
             raise RetrievalQueryInvalidError("top_k must be >= 1")
+        if top_k > self._max_top_k:
+            raise RetrievalQueryInvalidError(
+                f"top_k must be <= {self._max_top_k}",
+            )
         return stripped
 
     def _assert_model_compatible(self, model: EmbeddingModelDescriptor) -> None:
@@ -179,7 +254,7 @@ class ProcedureRetrievalService:
 
     def _embed_query(self, query: str) -> tuple[float, ...]:
         try:
-            raw = self._provider.embed([query])
+            raw = self._provider.embed([query], input_type="query")
         except EmbeddingValidationError:
             raise
         except EmbeddingProviderError:
@@ -200,6 +275,42 @@ class ProcedureRetrievalService:
             raw[0],
             expected_dims=self._provider.model.dimensions,
         )
+
+    def _rerank(
+        self,
+        *,
+        query: str,
+        documents: Sequence[str],
+    ) -> tuple[float, ...]:
+        try:
+            scores = self._reranker.rerank(query=query, documents=documents)
+        except (
+            NvidiaNimAuthError,
+            NvidiaNimRateLimitedError,
+            NvidiaNimTimeoutError,
+            NvidiaNimUnavailableError,
+            NvidiaNimResponseInvalidError,
+            RerankResponseInvalidError,
+            EmbeddingProviderError,
+            EmbeddingValidationError,
+        ):
+            raise
+        except Exception as exc:
+            raise RerankResponseInvalidError(
+                f"reranker raised: {exc}",
+            ) from exc
+        if not isinstance(scores, Sequence) or isinstance(scores, (str, bytes)):
+            raise RerankResponseInvalidError(
+                "reranker must return a sequence of scores",
+            )
+        values: list[float] = []
+        for score in scores:
+            if not _is_strict_finite_float(score):
+                raise RerankResponseInvalidError(
+                    "reranker returned a non-finite score",
+                )
+            values.append(float(score))
+        return tuple(values)
 
     def _validate_vector(
         self,

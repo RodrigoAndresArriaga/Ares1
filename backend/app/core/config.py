@@ -1,4 +1,4 @@
-# load and validate Phase 1/3 settings
+# load and validate Phase 1/3/4 settings
 # resolve paths against backend package root, not CWD
 from __future__ import annotations
 
@@ -8,12 +8,18 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 
 _SUPPORTED_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
+
+DEFAULT_NVIDIA_EMBED_MODEL_ID = "nvidia/llama-nemotron-embed-1b-v2"
+DEFAULT_NVIDIA_RERANK_MODEL_ID = "nvidia/llama-nemotron-rerank-1b-v2"
+DEFAULT_NVIDIA_EMBED_BASE_URL = "https://integrate.api.nvidia.com/v1"
+DEFAULT_NVIDIA_RERANK_BASE_URL = "https://ai.api.nvidia.com/v1"
+DEFAULT_EMBED_DIMENSIONS = 2048
 
 
 # resolve a configured path against backend_root when relative
@@ -74,6 +80,25 @@ def _positive_strict_int(value: Any, *, env_name: str) -> int:
     return value
 
 
+# non-negative strict integer from env/kwargs
+def _non_negative_strict_int(value: Any, *, env_name: str) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{env_name} must be a strict integer >= 0")
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or any(ch in text for ch in ".eE"):
+            raise ValueError(f"{env_name} must be a strict integer >= 0")
+        try:
+            value = int(text, 10)
+        except ValueError as exc:
+            raise ValueError(f"{env_name} must be a strict integer >= 0") from exc
+    if type(value) is not int:
+        raise ValueError(f"{env_name} must be a strict integer >= 0")
+    if value < 0:
+        raise ValueError(f"{env_name} must be a strict integer >= 0")
+    return value
+
+
 # finite float > 0 from env/kwargs
 def _positive_finite_float(value: Any, *, env_name: str) -> float:
     if isinstance(value, bool):
@@ -110,6 +135,33 @@ class Settings(BaseSettings):
     sse_heartbeat_seconds: float = Field(default=15.0)
     log_level: str = Field(default="INFO")
 
+    nvidia_api_key: SecretStr | None = Field(default=None)
+    nvidia_embed_base_url: str = Field(default=DEFAULT_NVIDIA_EMBED_BASE_URL)
+    nvidia_rerank_base_url: str = Field(default=DEFAULT_NVIDIA_RERANK_BASE_URL)
+    nvidia_embed_model_id: str = Field(default=DEFAULT_NVIDIA_EMBED_MODEL_ID)
+    nvidia_embed_model_revision: str | None = Field(default=None)
+    nvidia_rerank_model_id: str = Field(default=DEFAULT_NVIDIA_RERANK_MODEL_ID)
+    nvidia_rerank_model_revision: str | None = Field(default=None)
+    nvidia_embed_dimensions: int = Field(default=DEFAULT_EMBED_DIMENSIONS)
+    nvidia_request_timeout_seconds: float = Field(default=60.0)
+    nvidia_max_retries: int = Field(default=2)
+    nvidia_retry_backoff_seconds: float = Field(default=0.5)
+    nvidia_embed_batch_size: int = Field(default=32)
+
+    procedure_embedding_index_path: Path = Field(
+        default=Path("data/retrieval/procedure_embedding_index.json"),
+    )
+    procedure_manifest_path: Path = Field(
+        default=Path("../docs/procedures/corpus_manifest.json"),
+    )
+    procedure_manuals_root: Path = Field(
+        default=Path("../docs/procedures/manuals"),
+    )
+
+    retrieval_default_top_k: int = Field(default=5)
+    retrieval_max_top_k: int = Field(default=10)
+    retrieval_rerank_candidate_count: int = Field(default=20)
+
     @field_validator("sim_timeout_seconds", mode="before")
     @classmethod
     def _validate_timeout(cls, value: Any) -> float:
@@ -119,6 +171,22 @@ class Settings(BaseSettings):
     @classmethod
     def _validate_heartbeat(cls, value: Any) -> float:
         return _positive_finite_float(value, env_name="ARES_SSE_HEARTBEAT_SECONDS")
+
+    @field_validator("nvidia_request_timeout_seconds", mode="before")
+    @classmethod
+    def _validate_nim_timeout(cls, value: Any) -> float:
+        return _positive_finite_float(
+            value,
+            env_name="ARES_NVIDIA_REQUEST_TIMEOUT_SECONDS",
+        )
+
+    @field_validator("nvidia_retry_backoff_seconds", mode="before")
+    @classmethod
+    def _validate_nim_backoff(cls, value: Any) -> float:
+        return _positive_finite_float(
+            value,
+            env_name="ARES_NVIDIA_RETRY_BACKOFF_SECONDS",
+        )
 
     @field_validator("max_concurrent_runs", mode="before")
     @classmethod
@@ -145,6 +213,39 @@ class Settings(BaseSettings):
     def _validate_replay_max(cls, value: Any) -> int:
         return _positive_strict_int(value, env_name="ARES_REPLAY_MAX_INTERVAL_MS")
 
+    @field_validator("nvidia_max_retries", mode="before")
+    @classmethod
+    def _validate_nim_retries(cls, value: Any) -> int:
+        return _non_negative_strict_int(value, env_name="ARES_NVIDIA_MAX_RETRIES")
+
+    @field_validator("nvidia_embed_batch_size", mode="before")
+    @classmethod
+    def _validate_embed_batch(cls, value: Any) -> int:
+        return _positive_strict_int(value, env_name="ARES_NVIDIA_EMBED_BATCH_SIZE")
+
+    @field_validator("nvidia_embed_dimensions", mode="before")
+    @classmethod
+    def _validate_embed_dims(cls, value: Any) -> int:
+        return _positive_strict_int(value, env_name="ARES_NVIDIA_EMBED_DIMENSIONS")
+
+    @field_validator("retrieval_default_top_k", mode="before")
+    @classmethod
+    def _validate_default_top_k(cls, value: Any) -> int:
+        return _positive_strict_int(value, env_name="ARES_RETRIEVAL_DEFAULT_TOP_K")
+
+    @field_validator("retrieval_max_top_k", mode="before")
+    @classmethod
+    def _validate_max_top_k(cls, value: Any) -> int:
+        return _positive_strict_int(value, env_name="ARES_RETRIEVAL_MAX_TOP_K")
+
+    @field_validator("retrieval_rerank_candidate_count", mode="before")
+    @classmethod
+    def _validate_rerank_candidates(cls, value: Any) -> int:
+        return _positive_strict_int(
+            value,
+            env_name="ARES_RETRIEVAL_RERANK_CANDIDATE_COUNT",
+        )
+
     @field_validator("log_level", mode="before")
     @classmethod
     def _validate_log_level(cls, value: Any) -> str:
@@ -155,6 +256,19 @@ class Settings(BaseSettings):
             raise ValueError("ARES_LOG_LEVEL must be a supported logging level")
         return normalized
 
+    @field_validator(
+        "nvidia_embed_base_url",
+        "nvidia_rerank_base_url",
+        "nvidia_embed_model_id",
+        "nvidia_rerank_model_id",
+        mode="before",
+    )
+    @classmethod
+    def _nonempty_str(cls, value: Any) -> str:
+        if not isinstance(value, str) or value.strip() == "":
+            raise ValueError("NVIDIA URL and model ID settings must be non-empty")
+        return value.strip().rstrip("/")
+
     @model_validator(mode="after")
     def _resolve_and_validate_paths(self) -> Self:
         project_root = resolve_against_backend(self.project_root)
@@ -162,6 +276,9 @@ class Settings(BaseSettings):
         scenario_dir = resolve_against_backend(self.scenario_dir)
         runs_dir = resolve_against_backend(self.runs_dir)
         sessions_dir = resolve_against_backend(self.sessions_dir)
+        index_path = resolve_against_backend(self.procedure_embedding_index_path)
+        manifest_path = resolve_against_backend(self.procedure_manifest_path)
+        manuals_root = resolve_against_backend(self.procedure_manuals_root)
 
         if not project_root.exists() or not project_root.is_dir():
             raise ValueError(f"ARES_PROJECT_ROOT must be an existing directory: {project_root}")
@@ -180,6 +297,7 @@ class Settings(BaseSettings):
 
         ensure_writable_runs_dir(runs_dir)
         ensure_writable_dir(sessions_dir, env_name="ARES_SESSIONS_DIR")
+        ensure_writable_dir(index_path.parent, env_name="ARES_PROCEDURE_EMBEDDING_INDEX_PATH")
 
         if self.replay_min_interval_ms <= 0:
             raise ValueError("ARES_REPLAY_MIN_INTERVAL_MS must be a strict integer > 0")
@@ -197,11 +315,29 @@ class Settings(BaseSettings):
                 "ARES_REPLAY_MIN_INTERVAL_MS and ARES_REPLAY_MAX_INTERVAL_MS"
             )
 
+        if self.retrieval_default_top_k > self.retrieval_max_top_k:
+            raise ValueError(
+                "ARES_RETRIEVAL_DEFAULT_TOP_K must be <= ARES_RETRIEVAL_MAX_TOP_K"
+            )
+        if self.retrieval_rerank_candidate_count < self.retrieval_max_top_k:
+            raise ValueError(
+                "ARES_RETRIEVAL_RERANK_CANDIDATE_COUNT must be >= "
+                "ARES_RETRIEVAL_MAX_TOP_K"
+            )
+        if self.nvidia_embed_dimensions != DEFAULT_EMBED_DIMENSIONS:
+            raise ValueError(
+                "ARES_NVIDIA_EMBED_DIMENSIONS must be 2048 for "
+                "nvidia/llama-nemotron-embed-1b-v2"
+            )
+
         object.__setattr__(self, "project_root", project_root)
         object.__setattr__(self, "sim_binary", sim_binary)
         object.__setattr__(self, "scenario_dir", scenario_dir)
         object.__setattr__(self, "runs_dir", runs_dir)
         object.__setattr__(self, "sessions_dir", sessions_dir)
+        object.__setattr__(self, "procedure_embedding_index_path", index_path)
+        object.__setattr__(self, "procedure_manifest_path", manifest_path)
+        object.__setattr__(self, "procedure_manuals_root", manuals_root)
         return self
 
 

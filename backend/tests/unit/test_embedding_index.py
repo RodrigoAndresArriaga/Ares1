@@ -163,7 +163,13 @@ class ScriptedProvider:
     def model(self) -> EmbeddingModelDescriptor:
         return self._model
 
-    def embed(self, texts: Sequence[str]) -> Sequence[Sequence[float]]:
+    def embed(
+        self,
+        texts: Sequence[str],
+        *,
+        input_type: str = "passage",
+    ) -> Sequence[Sequence[float]]:
+        _ = input_type
         self._calls += 1
         if self._raise_provider:
             raise RuntimeError("provider boom")
@@ -524,7 +530,6 @@ def test_no_network_or_later_phase_in_step2_modules() -> None:
         "requests",
         "urllib",
         "cosine",
-        "rerank",
         "APIRouter",
         "lifespan",
         "MissionLifecycleService",
@@ -552,3 +557,5 @@ def test_no_network_or_later_phase_in_step2_modules() -> None:
     main_text = (BACKEND_ROOT / "app" / "main.py").read_text(encoding="utf-8")
     assert "EmbeddingIndexBuilder" not in main_text
     assert "DeterministicFakeEmbeddingProvider" not in main_text
+    assert "cosine" not in service_index.lower()
+    assert "cosine" not in service_provider.lower()
