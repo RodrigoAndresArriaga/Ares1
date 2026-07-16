@@ -51,6 +51,8 @@ ARES_HTTP_STATUS_BY_CODE: Mapping[ErrorCode, int] = {
     ErrorCode.PROCEDURE_MANUAL_PARSE_ERROR: 400,
     ErrorCode.EMBEDDING_PROVIDER_ERROR: 502,
     ErrorCode.EMBEDDING_VALIDATION_ERROR: 400,
+    ErrorCode.EMBEDDING_MODEL_MISMATCH: 400,
+    ErrorCode.RETRIEVAL_QUERY_INVALID: 400,
     ErrorCode.INTERNAL_SERVER_ERROR: 500,
 }
 
@@ -880,6 +882,44 @@ class EmbeddingValidationError(AresBackendError):
         super().__init__(
             message,
             code=ErrorCode.EMBEDDING_VALIDATION_ERROR,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class EmbeddingModelMismatchError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Embedding model does not match index",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.EMBEDDING_MODEL_MISMATCH,
+            run_id=run_id,
+        )
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(self.message, run_id=run_id)
+
+
+class RetrievalQueryInvalidError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Retrieval query is invalid",
+        *,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.RETRIEVAL_QUERY_INVALID,
             run_id=run_id,
         )
 
