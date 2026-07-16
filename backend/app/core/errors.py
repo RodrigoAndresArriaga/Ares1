@@ -29,6 +29,10 @@ ARES_HTTP_STATUS_BY_CODE: Mapping[ErrorCode, int] = {
     ErrorCode.MISSION_SESSION_ID_INVALID: 400,
     ErrorCode.BASELINE_TELEMETRY_EMPTY: 500,
     ErrorCode.REPLAY_INTERVAL_INVALID: 422,
+    ErrorCode.REPLAY_NOT_STARTED: 409,
+    ErrorCode.REPLAY_EVENT_ID_INVALID: 400,
+    ErrorCode.BASELINE_RESULT_UNAVAILABLE: 500,
+    ErrorCode.BASELINE_RESULT_MISMATCH: 500,
     ErrorCode.MISSION_TRIGGER_FAILED: 500,
     ErrorCode.MISSION_TRIGGER_CANCELLED: 500,
     ErrorCode.RUN_NOT_FOUND: 404,
@@ -287,6 +291,106 @@ class ReplayIntervalInvalidError(AresBackendError):
             provided_interval_ms=self.provided_interval_ms,
             min_interval_ms=self.min_interval_ms,
             max_interval_ms=self.max_interval_ms,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class ReplayNotStartedError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Mission replay has not started",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.REPLAY_NOT_STARTED,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class ReplayEventIdInvalidError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Replay Last-Event-ID is invalid",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.REPLAY_EVENT_ID_INVALID,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class BaselineResultUnavailableError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Baseline simulation result is unavailable",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.BASELINE_RESULT_UNAVAILABLE,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
+            session_id=self.session_id,
+            run_id=run_id,
+        )
+
+
+class BaselineResultMismatchError(AresBackendError):
+    def __init__(
+        self,
+        message: str = "Baseline simulation result does not match mission session",
+        *,
+        session_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=ErrorCode.BASELINE_RESULT_MISMATCH,
+            run_id=run_id,
+        )
+        self.session_id = session_id
+
+    def with_run_id(self, run_id: str) -> Self:
+        if self.run_id == run_id:
+            return self
+        return type(self)(
+            self.message,
             session_id=self.session_id,
             run_id=run_id,
         )
